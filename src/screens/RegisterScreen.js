@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc, getDocs, collection, query, where, deleteDoc } from 'firebase/firestore';
@@ -187,6 +188,16 @@ const RegisterScreen = ({ navigation }) => {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../../assets/images/logoprincipal.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Icon name="heart-pulse" size={60} color="#3b82f6" />
+          <Text style={styles.logoText}>TheHeartCloud</Text>
+          <Text style={styles.subtitle}>Crear cuenta</Text>
+        </View>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-left" size={24} color="#3b82f6" />
@@ -287,6 +298,26 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     padding: 20,
+  },
+   logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    marginBottom: 10,
+  },
+  logoText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1e40af',
+    marginTop: 5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
   },
   header: {
     flexDirection: 'row',

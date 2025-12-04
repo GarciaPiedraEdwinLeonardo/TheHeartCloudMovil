@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -22,6 +23,11 @@ const HomeScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <Image 
+          source={require('../../assets/images/logoprincipal.png')} 
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.welcomeText}>Bienvenido a TheHeartCloud</Text>
         <Text style={styles.subtitle}>Comunidad médica especializada</Text>
       </View>
@@ -126,6 +132,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#374151',
     textAlign: 'center',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
   },
   logoutButton: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -178,6 +179,7 @@ const LoginScreen = ({ navigation }) => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.logoContainer}>
+          <image>source={require('../../assets/images/logoprincipal.png')} style={styles.logo}</image>
           <Icon name="heart-pulse" size={80} color="#3b82f6" />
           <Text style={styles.logoText}>TheHeartCloud</Text>
           <Text style={styles.subtitle}>Comunidad médica especializada</Text>
@@ -272,6 +274,11 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     marginBottom: 40,
+  },
+   logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
   },
   logoText: {
     fontSize: 32,

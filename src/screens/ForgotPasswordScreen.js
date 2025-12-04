@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -72,6 +73,17 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.logoContainer}>
+        <Image 
+          source={require('../../assets/images/logoprincipal.png')} 
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Icon name="heart-pulse" size={60} color="#3b82f6" />
+        <Text style={styles.logoText}>TheHeartCloud</Text>
+        <Text style={styles.subtitle}>Recuperar contraseña</Text>
+      </View>
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-left" size={24} color="#3b82f6" />
@@ -126,6 +138,27 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: '#f8fafc',
     padding: 20,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    marginBottom: 10,
+  },
+  logoText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1e40af',
+    marginTop: 5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
   },
   header: {
     flexDirection: 'row',
