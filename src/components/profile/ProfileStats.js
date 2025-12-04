@@ -1,6 +1,9 @@
+// src/components/profile/ProfileStats.js
 import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native";
 import { IconButton, Card } from "react-native-paper";
+
+const { width, height } = Dimensions.get("window");
 
 const ProfileStats = ({ stats, onClose }) => {
   const calculateLevel = (aura) => {
@@ -22,222 +25,222 @@ const ProfileStats = ({ stats, onClose }) => {
       : 0;
 
   return (
-    <ScrollView style={styles.container}>
-      <Card style={styles.card}>
-        <Card.Content>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Estadísticas Detalladas</Text>
-            {onClose && (
+    <View style={styles.container}>
+      {/* Header fijo */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Estadísticas Detalladas</Text>
+        <IconButton
+          icon="close"
+          size={24}
+          onPress={onClose}
+          style={styles.closeButton}
+        />
+      </View>
+
+      {/* Contenido con ScrollView */}
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={true}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Nivel del usuario */}
+        <View
+          style={[
+            styles.levelSection,
+            { backgroundColor: levelInfo.bg, borderColor: levelInfo.color },
+          ]}
+        >
+          <IconButton
+            icon="trophy"
+            size={28}
+            iconColor={levelInfo.color}
+            style={styles.levelIcon}
+          />
+          <View style={styles.levelContent}>
+            <Text style={[styles.levelText, { color: levelInfo.color }]}>
+              Nivel {levelInfo.level}
+            </Text>
+            <Text style={styles.auraValue}>{stats?.aura || 0}</Text>
+            <Text style={styles.auraLabel}>Puntos de Aura Total</Text>
+          </View>
+        </View>
+
+        {/* Estadísticas principales en grid 2x2 */}
+        <View style={styles.mainStatsGrid}>
+          <View style={[styles.mainStatCard, { backgroundColor: "#fef2f2" }]}>
+            <View style={styles.mainStatHeader}>
               <IconButton
-                icon="close"
+                icon="heart"
                 size={24}
-                onPress={onClose}
-                style={styles.closeButton}
+                iconColor="#ef4444"
+                style={styles.mainStatIcon}
               />
-            )}
+              <Text style={styles.mainStatTitle}>Aura</Text>
+            </View>
+            <Text style={styles.mainStatValue}>{stats?.aura || 0}</Text>
+            <Text style={styles.mainStatDesc}>
+              Tu reputación en la comunidad
+            </Text>
           </View>
 
-          {/* Nivel del usuario */}
-          <View
-            style={[
-              styles.levelSection,
-              { backgroundColor: levelInfo.bg, borderColor: levelInfo.color },
-            ]}
-          >
-            <IconButton
-              icon="trophy"
-              size={28}
-              iconColor={levelInfo.color}
-              style={styles.levelIcon}
-            />
-            <View style={styles.levelContent}>
-              <Text style={[styles.levelText, { color: levelInfo.color }]}>
-                Nivel {levelInfo.level}
-              </Text>
-              <Text style={styles.auraValue}>{stats?.aura || 0}</Text>
-              <Text style={styles.auraLabel}>Puntos de Aura Total</Text>
+          <View style={[styles.mainStatCard, { backgroundColor: "#eff6ff" }]}>
+            <View style={styles.mainStatHeader}>
+              <IconButton
+                icon="comment-multiple"
+                size={24}
+                iconColor="#2a55ff"
+                style={styles.mainStatIcon}
+              />
+              <Text style={styles.mainStatTitle}>Interacciones</Text>
             </View>
+            <Text style={styles.mainStatValue}>{totalInteractions}</Text>
+            <Text style={styles.mainStatDesc}>Publicaciones + Comentarios</Text>
           </View>
 
-          {/* Estadísticas principales en grid 2x2 */}
-          <View style={styles.mainStatsGrid}>
-            <View style={[styles.mainStatCard, { backgroundColor: "#fef2f2" }]}>
-              <View style={styles.mainStatHeader}>
-                <IconButton
-                  icon="heart"
-                  size={24}
-                  iconColor="#ef4444"
-                  style={styles.mainStatIcon}
-                />
-                <Text style={styles.mainStatTitle}>Aura</Text>
-              </View>
-              <Text style={styles.mainStatValue}>{stats?.aura || 0}</Text>
-              <Text style={styles.mainStatDesc}>
-                Tu reputación en la comunidad
-              </Text>
+          <View style={[styles.mainStatCard, { backgroundColor: "#f0f9ff" }]}>
+            <View style={styles.mainStatHeader}>
+              <IconButton
+                icon="calendar"
+                size={24}
+                iconColor="#0ea5e9"
+                style={styles.mainStatIcon}
+              />
+              <Text style={styles.mainStatTitle}>Días activo</Text>
+            </View>
+            <Text style={styles.mainStatValue}>{stats?.daysActive || 0}</Text>
+            <Text style={styles.mainStatDesc}>Tiempo en la plataforma</Text>
+          </View>
+
+          <View style={[styles.mainStatCard, { backgroundColor: "#faf5ff" }]}>
+            <View style={styles.mainStatHeader}>
+              <IconButton
+                icon="account-group"
+                size={24}
+                iconColor="#8b5cf6"
+                style={styles.mainStatIcon}
+              />
+              <Text style={styles.mainStatTitle}>Comunidades</Text>
+            </View>
+            <Text style={styles.mainStatValue}>
+              {stats?.communitiesCount || 0}
+            </Text>
+            <Text style={styles.mainStatDesc}>
+              Comunidades donde participas
+            </Text>
+          </View>
+        </View>
+
+        {/* Desglose detallado */}
+        <View style={styles.detailedSection}>
+          <Text style={styles.sectionTitle}>Desglose de Actividad</Text>
+          <View style={styles.detailedGrid}>
+            <View style={styles.detailCard}>
+              <Text style={styles.detailValue}>{stats?.postsCount || 0}</Text>
+              <Text style={styles.detailLabel}>Publicaciones</Text>
+              <IconButton
+                icon="file-document"
+                size={16}
+                iconColor="#4b5563"
+                style={styles.detailIcon}
+              />
             </View>
 
-            <View style={[styles.mainStatCard, { backgroundColor: "#eff6ff" }]}>
-              <View style={styles.mainStatHeader}>
-                <IconButton
-                  icon="comment-multiple"
-                  size={24}
-                  iconColor="#2a55ff"
-                  style={styles.mainStatIcon}
-                />
-                <Text style={styles.mainStatTitle}>Interacciones</Text>
-              </View>
-              <Text style={styles.mainStatValue}>{totalInteractions}</Text>
-              <Text style={styles.mainStatDesc}>
-                Publicaciones + Comentarios
+            <View style={styles.detailCard}>
+              <Text style={styles.detailValue}>
+                {stats?.commentsCount || 0}
               </Text>
+              <Text style={styles.detailLabel}>Comentarios</Text>
+              <IconButton
+                icon="comment"
+                size={16}
+                iconColor="#4b5563"
+                style={styles.detailIcon}
+              />
             </View>
 
-            <View style={[styles.mainStatCard, { backgroundColor: "#f0f9ff" }]}>
-              <View style={styles.mainStatHeader}>
-                <IconButton
-                  icon="calendar"
-                  size={24}
-                  iconColor="#0ea5e9"
-                  style={styles.mainStatIcon}
-                />
-                <Text style={styles.mainStatTitle}>Días activo</Text>
-              </View>
-              <Text style={styles.mainStatValue}>{stats?.daysActive || 0}</Text>
-              <Text style={styles.mainStatDesc}>Tiempo en la plataforma</Text>
+            <View style={styles.detailCard}>
+              <Text style={styles.detailValue}>
+                {stats?.contributionCount || 0}
+              </Text>
+              <Text style={styles.detailLabel}>Contribuciones</Text>
+              <IconButton
+                icon="star"
+                size={16}
+                iconColor="#4b5563"
+                style={styles.detailIcon}
+              />
             </View>
 
-            <View style={[styles.mainStatCard, { backgroundColor: "#faf5ff" }]}>
-              <View style={styles.mainStatHeader}>
-                <IconButton
-                  icon="account-group"
-                  size={24}
-                  iconColor="#8b5cf6"
-                  style={styles.mainStatIcon}
-                />
-                <Text style={styles.mainStatTitle}>Comunidades</Text>
-              </View>
-              <Text style={styles.mainStatValue}>
-                {stats?.communitiesCount || 0}
+            <View style={styles.detailCard}>
+              <Text style={styles.detailValue}>{auraPerInteraction}</Text>
+              <Text style={styles.detailLabel}>Aura/prom</Text>
+              <IconButton
+                icon="trending-up"
+                size={16}
+                iconColor="#4b5563"
+                style={styles.detailIcon}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Ratio de actividad */}
+        {stats?.postsCount > 0 && (
+          <View style={styles.ratioSection}>
+            <Text style={styles.ratioTitle}>Ratio de actividad</Text>
+            <View style={styles.ratioBar}>
+              <View
+                style={[
+                  styles.ratioFill,
+                  {
+                    width: `${Math.min(
+                      100,
+                      (stats.postsCount / Math.max(1, totalInteractions)) * 100
+                    )}%`,
+                    backgroundColor: "#2a55ff",
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.ratioLabels}>
+              <Text style={styles.ratioLabel}>
+                Publicaciones: {stats.postsCount} (
+                {Math.round((stats.postsCount / totalInteractions) * 100)}%)
               </Text>
-              <Text style={styles.mainStatDesc}>
-                Comunidades donde participas
+              <Text style={styles.ratioLabel}>
+                Comentarios: {stats.commentsCount || 0} (
+                {Math.round(
+                  ((stats.commentsCount || 0) / totalInteractions) * 100
+                )}
+                %)
               </Text>
             </View>
           </View>
+        )}
 
-          {/* Desglose detallado */}
-          <View style={styles.detailedSection}>
-            <Text style={styles.sectionTitle}>Desglose de Actividad</Text>
-            <View style={styles.detailedGrid}>
-              <View style={styles.detailCard}>
-                <Text style={styles.detailValue}>{stats?.postsCount || 0}</Text>
-                <Text style={styles.detailLabel}>Publicaciones</Text>
-                <IconButton
-                  icon="file-document"
-                  size={16}
-                  iconColor="#4b5563"
-                  style={styles.detailIcon}
-                />
-              </View>
-
-              <View style={styles.detailCard}>
-                <Text style={styles.detailValue}>
-                  {stats?.commentsCount || 0}
-                </Text>
-                <Text style={styles.detailLabel}>Comentarios</Text>
-                <IconButton
-                  icon="comment"
-                  size={16}
-                  iconColor="#4b5563"
-                  style={styles.detailIcon}
-                />
-              </View>
-
-              <View style={styles.detailCard}>
-                <Text style={styles.detailValue}>
-                  {stats?.contributionCount || 0}
-                </Text>
-                <Text style={styles.detailLabel}>Contribuciones</Text>
-                <IconButton
-                  icon="star"
-                  size={16}
-                  iconColor="#4b5563"
-                  style={styles.detailIcon}
-                />
-              </View>
-
-              <View style={styles.detailCard}>
-                <Text style={styles.detailValue}>{auraPerInteraction}</Text>
-                <Text style={styles.detailLabel}>Aura/prom</Text>
-                <IconButton
-                  icon="trending-up"
-                  size={16}
-                  iconColor="#4b5563"
-                  style={styles.detailIcon}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Ratio de actividad */}
-          {stats?.postsCount > 0 && (
-            <View style={styles.ratioSection}>
-              <Text style={styles.ratioTitle}>Ratio de actividad</Text>
-              <View style={styles.ratioBar}>
-                <View
-                  style={[
-                    styles.ratioFill,
-                    {
-                      width: `${Math.min(
-                        100,
-                        (stats.postsCount / Math.max(1, totalInteractions)) *
-                          100
-                      )}%`,
-                      backgroundColor: "#2a55ff",
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.ratioLabels}>
-                <Text style={styles.ratioLabel}>
-                  Publicaciones: {stats.postsCount} (
-                  {Math.round((stats.postsCount / totalInteractions) * 100)}%)
-                </Text>
-                <Text style={styles.ratioLabel}>
-                  Comentarios: {stats.commentsCount || 0} (
-                  {Math.round(
-                    ((stats.commentsCount || 0) / totalInteractions) * 100
-                  )}
-                  %)
-                </Text>
-              </View>
-            </View>
-          )}
-        </Card.Content>
-      </Card>
-    </ScrollView>
+        {/* Espacio al final para que se vea bien */}
+        <View style={styles.bottomSpacing} />
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  card: {
-    borderRadius: 20,
     backgroundColor: "white",
-    margin: 16,
-    elevation: 4,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    zIndex: 10,
   },
   title: {
     fontSize: 22,
@@ -247,6 +250,14 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     margin: 0,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 30,
   },
   levelSection: {
     flexDirection: "row",
@@ -290,6 +301,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     elevation: 1,
+    minHeight: 140,
   },
   mainStatHeader: {
     flexDirection: "row",
@@ -339,6 +351,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
     position: "relative",
+    minHeight: 80,
   },
   detailValue: {
     fontSize: 20,
@@ -349,6 +362,7 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: 12,
     color: "#64748b",
+    textAlign: "center",
   },
   detailIcon: {
     position: "absolute",
@@ -382,10 +396,15 @@ const styles = StyleSheet.create({
   ratioLabels: {
     flexDirection: "row",
     justifyContent: "space-between",
+    flexWrap: "wrap",
   },
   ratioLabel: {
     fontSize: 12,
     color: "#6b7280",
+    marginBottom: 4,
+  },
+  bottomSpacing: {
+    height: 40,
   },
 });
 
