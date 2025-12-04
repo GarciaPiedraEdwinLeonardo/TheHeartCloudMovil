@@ -167,24 +167,12 @@ const ProfileScreen = ({ route, navigation }) => {
         onRequestClose={() => setShowStatsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={styles.modalBackground}
-            activeOpacity={1}
-            onPress={() => setShowStatsModal(false)}
-          >
-            <View style={styles.modalContainer}>
-              <TouchableOpacity
-                style={styles.modalContent}
-                activeOpacity={1}
-                onPress={(e) => e.stopPropagation()}
-              >
-                <ProfileStats
-                  stats={userData.stats}
-                  onClose={() => setShowStatsModal(false)}
-                />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.modalContainer}>
+            <ProfileStats
+              stats={userData.stats}
+              onClose={() => setShowStatsModal(false)}
+            />
+          </View>
         </View>
       </Modal>
     </View>
