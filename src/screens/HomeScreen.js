@@ -1,108 +1,429 @@
-// screens/HomeScreen.js
-import React from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Image,
   ScrollView,
-} from 'react-native';
-import { signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
-import { Button, Card, IconButton } from 'react-native-paper';
+  RefreshControl,
+  Image,
+  TouchableOpacity,
+} from "react-native";
+import { signOut } from "firebase/auth";
+import { auth } from "../config/firebase";
+import {
+  Card,
+  IconButton,
+  Avatar,
+  ActivityIndicator,
+} from "react-native-paper";
 
-const HomeScreen = () => {
+// Componente Logo
+const Logo = () => (
+  <View style={styles.logoContainer}>
+    <Image
+      source={require("../../assets/images/logoprincipal.png")}
+      style={styles.logoImage}
+      resizeMode="contain"
+    />
+    <Text style={styles.logoText}>TheHeartCloud</Text>
+  </View>
+);
+
+const HomeScreen = ({ navigation }) => {
+  const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Estados para navegación
+  const [currentView, setCurrentView] = useState("main");
+  const [selectedForum, setSelectedForum] = useState(null);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      setLoading(true);
+      setTimeout(() => {
+        setUserData({
+          displayName: "Dr. Usuario",
+          photoURL: "https://via.placeholder.com/40",
+          role: "doctor",
+          isVerified: true,
+        });
+        setLoading(false);
+      }, 1000);
+    };
+
+    fetchUserData();
+  }, []);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
+      console.error("Error al cerrar sesión:", error);
     }
   };
 
-  const features = [
-    { icon: 'forum', title: 'Foros Especializados', color: '#22c55e' },
-    { icon: 'account-check', title: 'Verificación Profesional', color: '#8b5cf6' },
-    { icon: 'chart-line', title: 'Sistema de Reputación', color: '#2a55ff' },
-    { icon: 'file-document', title: 'Casos Clínicos', color: '#004aad' },
-  ];
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  };
+
+  // Funciones de navegación
+  const navigateToForum = (forumData) => {
+    setSelectedForum(forumData);
+    setCurrentView("forum");
+  };
+
+  const navigateToPost = (postData) => {
+    setSelectedPost(postData);
+    setCurrentView("post");
+  };
+
+  const navigateToProfile = (userId = null) => {
+    navigation.navigate("Profile", {
+      userId: userId, // Si es null, será el perfil propio
+    });
+  };
+
+  const navigateToSearch = () => {
+    setCurrentView("search");
+  };
+
+  const navigateToMain = () => {
+    setCurrentView("main");
+  };
+
+  // Componente de vista principal
+  const renderMainView = () => (
+    <ScrollView
+      style={styles.mainContent}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      {/* Título de sección */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Publicaciones Recientes</Text>
+      </View>
+
+      {/* Publicaciones recientes - Placeholder */}
+      {[1, 2, 3].map((item) => (
+        <Card key={item} style={styles.postCard}>
+          <Card.Content>
+            <TouchableOpacity
+              style={styles.postHeader}
+              onPress={() =>
+                navigateToPost({ id: item, title: `Publicación ${item}` })
+              }
+            >
+              <View style={styles.postUserInfo}>
+                <Avatar.Image
+                  size={40}
+                  source={{ uri: "https://via.placeholder.com/40" }}
+                />
+                <View style={styles.postUserDetails}>
+                  <Text style={styles.postAuthor}>Dr. Ejemplo {item}</Text>
+                  <Text style={styles.postTime}>Hace {item} horas</Text>
+                </View>
+              </View>
+              <IconButton icon="check-decagram" size={20} iconColor="#2a55ff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => navigateToPost({ id: item })}>
+              <Text style={styles.postTitle}>
+                Título de la publicación médica #{item}
+              </Text>
+              <Text style={styles.postContent} numberOfLines={3}>
+                Contenido de ejemplo para mostrar cómo se verían las
+                publicaciones en la aplicación móvil de TheHeartCloud...
+              </Text>
+
+              <View style={styles.tagsContainer}>
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>#cardiología</Text>
+                </View>
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>#casoclínico</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.postFooter}>
+              <View style={styles.postActions}>
+                <IconButton
+                  icon="heart-outline"
+                  size={20}
+                  onPress={() => console.log("Like")}
+                />
+                <Text style={styles.actionText}>24</Text>
+
+                <IconButton
+                  icon="comment-outline"
+                  size={20}
+                  onPress={() => navigateToPost({ id: item })}
+                />
+                <Text style={styles.actionText}>8</Text>
+              </View>
+
+              <TouchableOpacity onPress={() => navigateToForum({ id: item })}>
+                <View style={styles.forumBadge}>
+                  <Text style={styles.forumBadgeText}>Cardiología</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </Card.Content>
+        </Card>
+      ))}
+    </ScrollView>
+  );
+
+  const renderForumView = () => (
+    <View style={styles.fullScreenView}>
+      <View style={styles.viewHeader}>
+        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
+          <IconButton icon="arrow-left" size={24} />
+        </TouchableOpacity>
+        <Text style={styles.viewTitle}>
+          Foro: {selectedForum?.name || "Foro"}
+        </Text>
+        <View style={styles.viewHeaderPlaceholder} />
+      </View>
+      <View style={styles.viewContent}>
+        <Text style={styles.placeholderText}>
+          Aquí se mostrarán las publicaciones del foro
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderPostView = () => (
+    <View style={styles.fullScreenView}>
+      <View style={styles.viewHeader}>
+        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
+          <IconButton icon="arrow-left" size={24} />
+        </TouchableOpacity>
+        <Text style={styles.viewTitle}>Publicación</Text>
+        <View style={styles.viewHeaderPlaceholder} />
+      </View>
+      <View style={styles.viewContent}>
+        <Text style={styles.placeholderText}>
+          Aquí se mostrarán los detalles de la publicación
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderProfileView = () => (
+    <View style={styles.fullScreenView}>
+      <View style={styles.viewHeader}>
+        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
+          <IconButton icon="arrow-left" size={24} />
+        </TouchableOpacity>
+        <Text style={styles.viewTitle}>Perfil</Text>
+        <View style={styles.viewHeaderPlaceholder} />
+      </View>
+      <View style={styles.viewContent}>
+        <Text style={styles.placeholderText}>
+          Aquí se mostrará el perfil del usuario
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderSearchView = () => (
+    <View style={styles.fullScreenView}>
+      <View style={styles.viewHeader}>
+        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
+          <IconButton icon="arrow-left" size={24} />
+        </TouchableOpacity>
+        <Text style={styles.viewTitle}>Búsqueda</Text>
+        <View style={styles.viewHeaderPlaceholder} />
+      </View>
+      <View style={styles.viewContent}>
+        <Text style={styles.placeholderText}>
+          Aquí se mostrarán los resultados de búsqueda
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderCurrentView = () => {
+    switch (currentView) {
+      case "forum":
+        return renderForumView();
+      case "post":
+        return renderPostView();
+      case "profile":
+        return renderProfileView();
+      case "search":
+        return renderSearchView();
+      default:
+        return renderMainView();
+    }
+  };
+
+  // Render Sidebar
+  const renderSidebar = () => {
+    if (!isSidebarOpen) return null;
+
+    return (
+      <View style={styles.sidebarContainer}>
+        <View style={styles.sidebar}>
+          <View style={styles.sidebarHeader}>
+            <TouchableOpacity
+              onPress={() => setIsSidebarOpen(false)}
+              style={styles.closeSidebarButton}
+            >
+              <IconButton icon="close" size={24} />
+            </TouchableOpacity>
+            <View style={styles.sidebarLogoContainer}>
+              <Image
+                source={require("../../assets/images/logoprincipal.png")}
+                style={styles.sidebarLogoImage}
+                resizeMode="contain"
+              />
+              <View style={styles.sidebarTitleContainer}>
+                <Text style={styles.sidebarTitle}>TheHeartCloud</Text>
+                <Text style={styles.sidebarSubtitle}>Comunidad médica</Text>
+              </View>
+            </View>
+          </View>
+
+          <ScrollView style={styles.sidebarContent}>
+            <TouchableOpacity
+              style={styles.sidebarItem}
+              onPress={() => {
+                navigateToMain();
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="home" size={20} iconColor="#2a55ff" />
+              <Text style={styles.sidebarItemTextActive}>Inicio</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sidebarItem}
+              onPress={() => {
+                navigateToProfile();
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="account" size={20} />
+              <Text style={styles.sidebarItemText}>Mi Perfil</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sidebarItem}
+              onPress={() => {
+                navigateToSearch();
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="magnify" size={20} />
+              <Text style={styles.sidebarItemText}>Buscar</Text>
+            </TouchableOpacity>
+
+            <View style={styles.sidebarDivider} />
+
+            <Text style={styles.sidebarSectionTitle}>Mis comunidades</Text>
+
+            {["Cardiología", "Neurología", "Pediatría", "Cirugía"].map(
+              (forum, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.sidebarItem}
+                  onPress={() => {
+                    navigateToForum({ name: forum });
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <IconButton icon="forum" size={20} />
+                  <Text style={styles.sidebarItemText}>{forum}</Text>
+                </TouchableOpacity>
+              )
+            )}
+
+            <View style={styles.sidebarDivider} />
+
+            <TouchableOpacity
+              style={[styles.sidebarItem, styles.logoutItem]}
+              onPress={() => {
+                handleLogout();
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="logout" size={20} />
+              <Text style={styles.sidebarItemText}>Cerrar Sesión</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* Overlay para cerrar sidebar al tocar fuera */}
+        <TouchableOpacity
+          style={styles.sidebarOverlay}
+          onPress={() => setIsSidebarOpen(false)}
+          activeOpacity={1}
+        />
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2a55ff" />
+        <Text style={styles.loadingText}>Cargando...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          <Image 
-            source={require('../../assets/images/logoprincipal.png')} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.welcomeText}>Bienvenido a TheHeartCloud</Text>
-          <Text style={styles.subtitle}>Comunidad médica especializada</Text>
-        </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => setIsSidebarOpen(true)}>
+          <IconButton icon="menu" size={24} />
+        </TouchableOpacity>
 
-        <View style={styles.content}>
-          <Card style={styles.mainCard}>
-            <Card.Content style={styles.cardContent}>
-              <Image 
-                source={require('../../assets/images/logoprincipal.png')} 
-                style={styles.cardLogo}
-                resizeMode="contain"
-              />
-              <Text style={styles.cardTitle}>¡Hola de nuevo!</Text>
-              <Text style={styles.cardText}>
-                La pantalla principal se desarrollará próximamente.{'\n'}
-                Aquí estarán los foros, perfiles y todas las funcionalidades.
-              </Text>
-            </Card.Content>
-          </Card>
+        {/* Componente Logo */}
+        <Logo />
 
-          <Text style={styles.sectionTitle}>Características principales</Text>
-          
-          <View style={styles.featuresGrid}>
-            {features.map((feature, index) => (
-              <Card key={index} style={styles.featureCard}>
-                <Card.Content style={styles.featureContent}>
-                  <IconButton
-                    icon={feature.icon}
-                    size={32}
-                    iconColor={feature.color}
-                    style={styles.featureIcon}
-                  />
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                </Card.Content>
-              </Card>
-            ))}
-          </View>
-
-          <Card style={styles.infoCard}>
-            <Card.Content style={styles.infoContent}>
-              <IconButton
-                icon="information"
-                size={24}
-                iconColor="#004AAD"
-                style={styles.infoIcon}
-              />
-              <Text style={styles.infoText}>
-                Explora todas las funcionalidades médicas especializadas disponibles en nuestra plataforma.
-              </Text>
-            </Card.Content>
-          </Card>
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Button
-          mode="contained"
-          onPress={handleLogout}
-          style={styles.logoutButton}
-          contentStyle={styles.buttonContent}
-          labelStyle={styles.buttonLabel}
-          icon="logout"
-        >
-          Cerrar Sesión
-        </Button>
+        {/* Espacio vacío para mantener la simetría */}
+        <View style={styles.headerPlaceholder} />
       </View>
+
+      {/* Contenido principal */}
+      {renderCurrentView()}
+
+      {/* Bottom Navigation - Solo en vista principal */}
+      {currentView === "main" && (
+        <View style={styles.bottomNav}>
+          <TouchableOpacity style={styles.navItem} onPress={navigateToMain}>
+            <IconButton icon="home" size={24} iconColor="#2a55ff" />
+            <Text style={styles.navTextActive}>Inicio</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.navItem} onPress={navigateToSearch}>
+            <IconButton icon="magnify" size={24} iconColor="#64748b" />
+            <Text style={styles.navText}>Buscar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => navigateToProfile()}
+          >
+            <IconButton icon="account" size={24} iconColor="#64748b" />
+            <Text style={styles.navText}>Perfil</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Sidebar */}
+      {renderSidebar()}
     </View>
   );
 };
@@ -110,169 +431,314 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: "#f8fafc",
   },
-  scrollContainer: {
-    flexGrow: 1,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    color: "#64748b",
+    fontSize: 16,
   },
   header: {
-    backgroundColor: 'white',
-    padding: 24,
-    paddingTop: 60,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderBottomColor: "#e2e8f0",
+    zIndex: 10,
   },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 16,
+  // Estilos del componente Logo
+  logoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1e293b',
-    textAlign: 'center',
-    marginBottom: 4,
-    letterSpacing: -0.5,
-    lineHeight: 32,
+  logoImage: {
+    width: 32,
+    height: 32,
+    marginRight: 8,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    textAlign: 'center',
-    letterSpacing: 0.3,
+  logoText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#2a55ff",
   },
-  content: {
+  headerPlaceholder: {
+    width: 40,
+  },
+  mainContent: {
     flex: 1,
-    padding: 24,
+    paddingTop: 16,
   },
-  mainCard: {
-    marginBottom: 24,
-    borderRadius: 16,
-    backgroundColor: 'white',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  cardContent: {
-    alignItems: 'center',
-    padding: 24,
-  },
-  cardLogo: {
-    width: 80,
-    height: 80,
+  sectionHeader: {
+    paddingHorizontal: 16,
     marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 12,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-    lineHeight: 28,
-  },
-  cardText: {
-    fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center',
-    lineHeight: 22,
-    letterSpacing: 0.2,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1e293b',
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  postCard: {
+    marginHorizontal: 16,
     marginBottom: 16,
-    letterSpacing: -0.2,
-    lineHeight: 24,
-  },
-  featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  featureCard: {
-    width: '48%',
-    marginBottom: 12,
     borderRadius: 12,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
   },
-  featureContent: {
-    alignItems: 'center',
-    padding: 16,
+  postHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  featureIcon: {
-    margin: 0,
+  postUserInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  postUserDetails: {
+    marginLeft: 12,
+  },
+  postAuthor: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  postTime: {
+    fontSize: 12,
+    color: "#64748b",
+  },
+  postTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
     marginBottom: 8,
   },
-  featureTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    textAlign: 'center',
-    lineHeight: 18,
-    letterSpacing: 0.2,
+  postContent: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+    marginBottom: 12,
   },
-  infoCard: {
-    backgroundColor: '#f0f9ff',
-    borderWidth: 1,
-    borderColor: '#5170FF',
-    borderRadius: 12,
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 12,
   },
-  infoContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
+  tag: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 6,
+    marginBottom: 6,
   },
-  infoIcon: {
-    margin: 0,
+  tagText: {
+    fontSize: 12,
+    color: "#475569",
+  },
+  postFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 12,
+  },
+  postActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  actionText: {
+    fontSize: 14,
+    color: "#64748b",
+    marginRight: 16,
+  },
+  forumBadge: {
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  forumBadgeText: {
+    fontSize: 12,
+    color: "#2a55ff",
+    fontWeight: "600",
+  },
+  bottomNav: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingVertical: 8,
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    paddingBottom: 20,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  navItem: {
+    alignItems: "center",
+    flex: 1,
+  },
+  navText: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  navTextActive: {
+    fontSize: 12,
+    color: "#2a55ff",
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  // Sidebar styles
+  sidebarContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    flexDirection: "row",
+  },
+  sidebar: {
+    width: 280,
+    backgroundColor: "white",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    zIndex: 1001,
+  },
+  sidebarOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  sidebarHeader: {
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  closeSidebarButton: {
     marginRight: 12,
   },
-  infoText: {
-    fontSize: 14,
-    color: '#004AAD',
+  sidebarLogoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
-    lineHeight: 20,
-    letterSpacing: 0.1,
   },
-  footer: {
-    padding: 24,
-    paddingBottom: 32,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+  sidebarLogoImage: {
+    width: 32,
+    height: 32,
+    marginRight: 10,
   },
-  logoutButton: {
-    backgroundColor: '#2a55ff',
-    borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+  sidebarTitleContainer: {
+    flex: 1,
   },
-  buttonContent: {
-    paddingVertical: 10,
-  },
-  buttonLabel: {
+  sidebarTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  sidebarSubtitle: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  sidebarContent: {
+    flex: 1,
+    paddingVertical: 20,
+  },
+  sidebarItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  sidebarItemText: {
+    fontSize: 16,
+    color: "#1e293b",
+    marginLeft: 12,
+    fontWeight: "500",
+  },
+  sidebarItemTextActive: {
+    fontSize: 16,
+    color: "#2a55ff",
+    marginLeft: 12,
+    fontWeight: "600",
+  },
+  sidebarDivider: {
+    height: 1,
+    backgroundColor: "#e2e8f0",
+    marginVertical: 16,
+    marginHorizontal: 20,
+  },
+  sidebarSectionTitle: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "600",
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  logoutItem: {
+    marginTop: 20,
+  },
+  // Full screen views
+  fullScreenView: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+  viewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  backButton: {
+    marginRight: 12,
+  },
+  viewTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1e293b",
+    flex: 1,
+  },
+  viewHeaderPlaceholder: {
+    width: 40,
+  },
+  viewContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
   },
 });
 
