@@ -3,8 +3,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
@@ -13,7 +11,7 @@ import {
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { TextInput, Button, Card, IconButton } from 'react-native-paper';
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { loading, setLoading } = useAuth();
@@ -25,24 +23,14 @@ const ForgotPasswordScreen = ({ navigation }) => {
     if (!email) return 'El email es requerido';
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return 'Formato de email inválido';
-    if (email.length > 254) return 'El email no puede ser de esa longitud';
-    if (email.length < 6) return 'El email no puede ser tan corto';
-    const invalidChars = /[<>()\[\]\\;:,@"]/;
-    if (invalidChars.test(email.split('@')[0])) {
-      return 'El email contiene caracteres no permitidos';
-    }
     return null;
-  };
-
-  const validateField = (value) => {
-    const error = validateEmail(value);
-    setFieldError(error);
-    return !error;
   };
 
   const handleSubmit = async () => {
     setLoading(true);
-    if (!validateField(email)) {
+    const error = validateEmail(email);
+    if (error) {
+      setFieldError(error);
       setLoading(false);
       return;
     }
@@ -64,8 +52,6 @@ const ForgotPasswordScreen = ({ navigation }) => {
         return 'No existe una cuenta con este correo electrónico.';
       case 'auth/invalid-email':
         return 'El correo electrónico no es válido.';
-      case 'auth/too-many-requests':
-        return 'Demasiados intentos. Intenta más tarde.';
       default:
         return 'Error al enviar el correo de recuperación. Intenta nuevamente.';
     }
@@ -73,62 +59,90 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.logoContainer}>
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
         <Image 
           source={require('../../assets/images/logoprincipal.png')} 
-          style={styles.logo}
+          style={styles.headerLogo}
           resizeMode="contain"
         />
-        <Icon name="heart-pulse" size={60} color="#3b82f6" />
-        <Text style={styles.logoText}>TheHeartCloud</Text>
-        <Text style={styles.subtitle}>Recuperar contraseña</Text>
-      </View>
-
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color="#3b82f6" />
-        </TouchableOpacity>
         <Text style={styles.title}>Recuperar Contraseña</Text>
       </View>
 
-      <View style={styles.formContainer}>
-        {message ? (
-          <View style={styles.messageBox}>
-            <Icon name="check-circle" size={24} color="#059669" />
-            <Text style={styles.messageText}>{message}</Text>
-          </View>
-        ) : null}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Image 
+            source={require('../../assets/images/logoprincipal.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          
+          <Text style={styles.cardTitle}>Recuperar Contraseña</Text>
+          <Text style={styles.cardSubtitle}>
+            Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.
+          </Text>
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Correo Electrónico</Text>
+          {message ? (
+            <Card style={styles.successCard}>
+              <Card.Content style={styles.successContent}>
+                <IconButton
+                  icon="check-circle"
+                  size={24}
+                  iconColor="#22c55e"
+                  style={styles.successIcon}
+                />
+                <Text style={styles.successText}>{message}</Text>
+              </Card.Content>
+            </Card>
+          ) : null}
+
           <TextInput
-            style={[styles.input, fieldError && styles.inputError]}
-            placeholder="tu@correo.com"
+            label="Correo Electrónico"
             value={email}
             onChangeText={(value) => {
-              const processedValue = value.length > 254 ? value.slice(0, 254) : value;
+              const processedValue = value.slice(0, 254);
               setEmail(processedValue);
-              if (processedValue) validateField(processedValue);
-              else setFieldError('');
+              if (processedValue && fieldError) setFieldError('');
             }}
-            onBlur={() => validateField(email)}
+            mode="outlined"
+            style={styles.input}
+            error={!!fieldError}
             keyboardType="email-address"
             autoCapitalize="none"
             maxLength={254}
+            left={<TextInput.Icon icon="email" />}
           />
           {fieldError ? <Text style={styles.errorText}>{fieldError}</Text> : null}
-        </View>
 
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          <Text style={styles.submitButtonText}>
+          <Button
+            mode="contained"
+            onPress={handleSubmit}
+            loading={loading}
+            disabled={loading}
+            style={styles.submitButton}
+            contentStyle={styles.buttonContent}
+            labelStyle={styles.buttonLabel}
+            icon="email-send"
+          >
             {loading ? 'Enviando...' : 'Enviar enlace de recuperación'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          </Button>
+
+          <Button
+            mode="outlined"
+            onPress={() => navigation.navigate('Login')}
+            style={styles.backButton}
+            contentStyle={styles.buttonContent}
+            labelStyle={styles.outlinedButtonLabel}
+            icon="arrow-left"
+          >
+            Volver al inicio de sesión
+          </Button>
+        </Card.Content>
+      </Card>
     </ScrollView>
   );
 };
@@ -139,106 +153,120 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     padding: 20,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 10,
-  },
-  logoText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e40af',
-    marginTop: 5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 30,
-    marginTop: 10,
+    marginBottom: 24,
+    marginTop: 20,
   },
-  backButton: {
-    marginRight: 16,
+  headerLogo: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1e293b',
     flex: 1,
+    letterSpacing: -0.3,
   },
-  formContainer: {
+  card: {
+    borderRadius: 16,
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 24,
+    padding: 8,
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
   },
-  messageBox: {
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
+    marginBottom: 5,
+  },
+  cardTitle: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: -0.3,
+    lineHeight: 28,
+  },
+  cardSubtitle: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    letterSpacing: 0.1,
+  },
+  successCard: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  successContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#d1fae5',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
   },
-  messageText: {
-    color: '#065f46',
+  successIcon: {
+    margin: 0,
+    marginRight: 12,
+  },
+  successText: {
+    color: '#166534',
     fontSize: 14,
-    marginLeft: 12,
     flex: 1,
-  },
-  inputContainer: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '500',
-    color: '#374151',
-    marginBottom: 6,
+    letterSpacing: 0.1,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    marginBottom: 16,
     backgroundColor: 'white',
-  },
-  inputError: {
-    borderColor: '#ef4444',
   },
   errorText: {
     color: '#ef4444',
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 12,
+    marginLeft: 4,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   submitButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#2a55ff',
     borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  backButton: {
+    borderColor: '#004AAD',
+    borderRadius: 12,
   },
-  submitButtonText: {
-    color: 'white',
+  buttonContent: {
+    paddingVertical: 10,
+  },
+  buttonLabel: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  outlinedButtonLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#004AAD',
+    letterSpacing: 0.3,
   },
 });
 

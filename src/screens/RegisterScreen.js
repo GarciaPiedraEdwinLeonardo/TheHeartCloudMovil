@@ -3,8 +3,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -13,13 +11,13 @@ import {
   Image,
 } from 'react-native';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { doc, setDoc, getDocs, collection, query, where, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { TextInput, Button, Card, IconButton } from 'react-native-paper';
 
 const RegisterScreen = ({ navigation }) => {
-  const { loading, setLoading, error, setError } = useAuth();
+  const { loading, setLoading } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -37,12 +35,6 @@ const RegisterScreen = ({ navigation }) => {
     if (!email) return 'El email es requerido';
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return 'Formato de email inválido';
-    if (email.length > 254) return 'El email no puede ser de esa longitud';
-    if (email.length < 6) return 'El email no puede ser tan corto';
-    const invalidChars = /[<>()\[\]\\;:,@"]/;
-    if (invalidChars.test(email.split('@')[0])) {
-      return 'El email contiene caracteres no permitidos';
-    }
     return null;
   };
 
@@ -77,83 +69,36 @@ const RegisterScreen = ({ navigation }) => {
     return !error;
   };
 
-  const handleChange = (name, value) => {
-    let processedValue = value;
-    if (name === 'email' && value.length > 254) {
-      processedValue = value.slice(0, 254);
-    } else if ((name === 'password' || name === 'confirmPassword') && value.length > 18) {
-      processedValue = value.slice(0, 18);
-    }
-    if ((name === 'password' || name === 'confirmPassword') && value.length > 0) {
-      const filteredValue = value.replace(/[^a-zA-Z0-9]/g, '');
-      processedValue = filteredValue.slice(0, 18);
-    }
-    setFormData(prev => ({ ...prev, [name]: processedValue }));
-    if (processedValue) {
-      validateField(name, processedValue);
-    } else {
-      setFieldErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const cleanupExistingUnverifiedUser = async (email) => {
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', email), where('emailVerified', '==', false));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        const userData = userDoc.data();
-        const now = new Date();
-        const lastSent = userData.emailVerificationSentAt?.toDate();
-        if (lastSent && (now - lastSent) < (60 * 60 * 1000)) {
-          throw new Error('Ya se envió un email de verificación recientemente. Espera al menos 1 hora.');
-        }
-        await deleteDoc(doc(db, 'users', userDoc.id));
-      }
-    } catch (error) {
-      throw error;
-    }
-  };
-
   const handleEmailRegister = async () => {
     setLoading(true);
-    setError('');
     const isEmailValid = validateField('email', formData.email);
     const isPasswordValid = validateField('password', formData.password);
     const isConfirmValid = validateField('confirmPassword', formData.confirmPassword);
+    
     if (!isEmailValid || !isPasswordValid || !isConfirmValid) {
       setLoading(false);
       return;
     }
-    if (formData.password !== formData.confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden.');
-      setLoading(false);
-      return;
-    }
+    
     try {
-      await cleanupExistingUnverifiedUser(formData.email);
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const user = userCredential.user;
+      
       await sendEmailVerification(user);
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+      
+      const expiresAt = new Date(new Date().getTime() + (24 * 60 * 60 * 1000));
+      
       await setDoc(doc(db, 'users', user.uid), {
         id: user.uid,
         email: user.email,
         role: "unverified",
         stats: { aura: 0, contributionCount: 0, postCount: 0, commentCount: 0 },
-        suspension: { isSuspended: false },
-        joinedForums: [],
         joinDate: new Date(),
-        lastLogin: new Date(),
-        isActive: true,
-        isDeleted: false,
         emailVerified: false,
         emailVerificationSentAt: new Date(),
         verificationExpiresAt: expiresAt,
-        verificationAttempts: 1,
       });
+      
       await auth.signOut();
       navigation.navigate('VerificationSent', { email: formData.email });
     } catch (error) {
@@ -164,23 +109,24 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   const getErrorMessage = (errorCode) => {
-    if (!errorCode) return 'Error al crear la cuenta. Intenta nuevamente.';
     switch (errorCode) {
       case 'auth/email-already-in-use':
-        return 'Este correo ya está registrado. Si no verificaste tu cuenta anteriormente, espera unos minutos.';
+        return 'Este correo ya está registrado.';
       case 'auth/invalid-email':
         return 'El correo electrónico no es válido.';
-      case 'auth/operation-not-allowed':
-        return 'El registro no está habilitado.';
       case 'auth/weak-password':
         return 'La contraseña es demasiado débil.';
       default:
-        if (typeof errorCode === 'string' && errorCode.includes('already-in-use')) {
-          return 'Este email ya está en uso. Espera 1 hora e intenta nuevamente.';
-        }
-        return `Error al crear la cuenta: ${errorCode}. Intenta nuevamente.`;
+        return 'Error al crear la cuenta. Intenta nuevamente.';
     }
   };
+
+  const passwordRequirements = [
+    { text: 'Mínimo 8 caracteres', met: formData.password.length >= 8 },
+    { text: 'Una letra minúscula', met: /[a-z]/.test(formData.password) },
+    { text: 'Una letra mayúscula', met: /[A-Z]/.test(formData.password) },
+    { text: 'Un número', met: /\d/.test(formData.password) },
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -188,103 +134,167 @@ const RegisterScreen = ({ navigation }) => {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.logoContainer}>
+        <View style={styles.header}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            onPress={() => navigation.goBack()}
+             style={styles.backButton}
+          />
           <Image 
             source={require('../../assets/images/logoprincipal.png')} 
-            style={styles.logo}
+            style={styles.headerLogo}
             resizeMode="contain"
           />
-          <Icon name="heart-pulse" size={60} color="#3b82f6" />
-          <Text style={styles.logoText}>TheHeartCloud</Text>
-          <Text style={styles.subtitle}>Crear cuenta</Text>
-        </View>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-left" size={24} color="#3b82f6" />
-          </TouchableOpacity>
           <Text style={styles.title}>Crear Cuenta</Text>
         </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Correo Electrónico</Text>
+        
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.logoTitleContainer}>
+              <Image 
+                source={require('../../assets/images/logoprincipal.png')} 
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={styles.title_card}>Crear Cuenta</Text>
+            </View>
+             <View style={styles.headerRight}>
+            {/* Espacio vacío para mantener la simetría */}
+            <View style={{ width: 48 }} />
+          </View>
             <TextInput
-              style={[styles.input, fieldErrors.email && styles.inputError]}
-              placeholder="tu@correo.com"
+              label="Correo Electrónico"
               value={formData.email}
-              onChangeText={(value) => handleChange('email', value)}
+              onChangeText={(value) => {
+                const processedValue = value.slice(0, 254);
+                setFormData(prev => ({ ...prev, email: processedValue }));
+                if (processedValue && fieldErrors.email) {
+                  setFieldErrors(prev => ({ ...prev, email: '' }));
+                }
+              }}
               onBlur={() => validateField('email', formData.email)}
+              mode="outlined"
+              style={styles.input}
+              error={!!fieldErrors.email}
               keyboardType="email-address"
               autoCapitalize="none"
-              maxLength={254}
+              left={<TextInput.Icon icon="email" />}
             />
             {fieldErrors.email ? <Text style={styles.errorText}>{fieldErrors.email}</Text> : null}
-          </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Contraseña</Text>
-            <View style={[styles.passwordContainer, fieldErrors.password && styles.inputError]}>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Entre 8 y 18 caracteres"
-                value={formData.password}
-                onChangeText={(value) => handleChange('password', value)}
-                onBlur={() => validateField('password', formData.password)}
-                secureTextEntry={!showPassword}
-                maxLength={18}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Icon name={showPassword ? 'eye-off' : 'eye'} size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
+            <TextInput
+              label="Contraseña"
+              value={formData.password}
+              onChangeText={(value) => {
+                const processedValue = value.slice(0, 18);
+                setFormData(prev => ({ ...prev, password: processedValue }));
+                if (processedValue && fieldErrors.password) {
+                  setFieldErrors(prev => ({ ...prev, password: '' }));
+                }
+              }}
+              onBlur={() => validateField('password', formData.password)}
+              mode="outlined"
+              style={styles.input}
+              secureTextEntry={!showPassword}
+              error={!!fieldErrors.password}
+              autoCapitalize="none"
+              left={<TextInput.Icon icon="lock" />}
+              right={
+                <TextInput.Icon
+                  icon={showPassword ? "eye-off" : "eye"}
+                  onPress={() => setShowPassword(!showPassword)}
+                />
+              }
+            />
             {fieldErrors.password ? <Text style={styles.errorText}>{fieldErrors.password}</Text> : null}
-          </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirmar Contraseña</Text>
-            <View style={[styles.passwordContainer, fieldErrors.confirmPassword && styles.inputError]}>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Repite tu contraseña"
-                value={formData.confirmPassword}
-                onChangeText={(value) => handleChange('confirmPassword', value)}
-                onBlur={() => validateField('confirmPassword', formData.confirmPassword)}
-                secureTextEntry={!showConfirmPassword}
-                maxLength={18}
-              />
-              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-                <Icon name={showConfirmPassword ? 'eye-off' : 'eye'} size={24} color="#6b7280" />
-              </TouchableOpacity>
+            <View style={styles.requirementsContainer}>
+              <Text style={styles.requirementsTitle}>Requisitos de contraseña:</Text>
+              {passwordRequirements.map((req, index) => (
+                <View key={index} style={styles.requirementRow}>
+                  <IconButton
+                    icon={req.met ? "check-circle" : "circle-outline"}
+                    size={16}
+                    iconColor={req.met ? "#22c55e" : "#94a3b8"}
+                    style={styles.requirementIcon}
+                  />
+                  <Text style={[
+                    styles.requirementText,
+                    req.met && styles.requirementMet
+                  ]}>
+                    {req.text}
+                  </Text>
+                </View>
+              ))}
             </View>
+
+            <TextInput
+              label="Confirmar Contraseña"
+              value={formData.confirmPassword}
+              onChangeText={(value) => {
+                const processedValue = value.slice(0, 18);
+                setFormData(prev => ({ ...prev, confirmPassword: processedValue }));
+                if (processedValue && fieldErrors.confirmPassword) {
+                  setFieldErrors(prev => ({ ...prev, confirmPassword: '' }));
+                }
+              }}
+              onBlur={() => validateField('confirmPassword', formData.confirmPassword)}
+              mode="outlined"
+              style={styles.input}
+              secureTextEntry={!showConfirmPassword}
+              error={!!fieldErrors.confirmPassword}
+              autoCapitalize="none"
+              left={<TextInput.Icon icon="lock-check" />}
+              right={
+                <TextInput.Icon
+                  icon={showConfirmPassword ? "eye-off" : "eye"}
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                />
+              }
+            />
             {fieldErrors.confirmPassword ? (
               <Text style={styles.errorText}>{fieldErrors.confirmPassword}</Text>
             ) : null}
-          </View>
 
-          <TouchableOpacity
-            style={[styles.registerButton, loading && styles.buttonDisabled]}
-            onPress={handleEmailRegister}
-            disabled={loading}
-          >
-            <Text style={styles.registerButtonText}>
+            <Card style={styles.infoCard}>
+              <Card.Content style={styles.infoContent}>
+                <IconButton
+                  icon="information"
+                  size={24}
+                  iconColor="#004AAD"
+                  style={styles.infoIcon}
+                />
+                <Text style={styles.infoText}>
+                  Nota: Las cuentas no verificadas se eliminan automáticamente después de 24 horas.
+                </Text>
+              </Card.Content>
+            </Card>
+
+            <Button
+              mode="contained"
+              onPress={handleEmailRegister}
+              loading={loading}
+              disabled={loading}
+              style={styles.registerButton}
+              contentStyle={styles.buttonContent}
+              labelStyle={styles.buttonLabel}
+            >
               {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
-            </Text>
-          </TouchableOpacity>
+            </Button>
 
-          <View style={styles.noteContainer}>
-            <Icon name="information" size={20} color="#3b82f6" />
-            <Text style={styles.noteText}>
-              Nota: Las cuentas no verificadas se eliminan automáticamente después de 24 horas.
-            </Text>
-          </View>
-
-          <View style={styles.loginContainer}>
-            <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.loginLink}>Inicia sesión aquí</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+            <View style={styles.loginContainer}>
+              <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
+              <Button
+                mode="text"
+                onPress={() => navigation.navigate('Login')}
+                labelStyle={styles.loginLink}
+              >
+                Inicia sesión aquí
+              </Button>
+            </View>
+          </Card.Content>
+        </Card>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -299,132 +309,153 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
   },
-   logoContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 10,
-  },
-  logoText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e40af',
-    marginTop: 5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 30,
-    marginTop: 10,
+    marginBottom: 24,
+    marginTop: 20,
   },
-  backButton: {
-    marginRight: 16,
+  headerLogo: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1e293b',
     flex: 1,
+    letterSpacing: -0.3,
   },
-  formContainer: {
+  title_card: {
+    fontSize: 30,
+    fontWeight: '700',
+    textAlign: 'center',
+    color: '#1e293b',
+    marginBottom: 24,
+    letterSpacing: -0.3,
+    lineHeight: 32,
+  },
+  card: {
+    borderRadius: 16,
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 24,
+    padding: 8,
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
   },
-  inputContainer: {
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
     marginBottom: 20,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 6,
-  },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    marginBottom: 16,
     backgroundColor: 'white',
-  },
-  inputError: {
-    borderColor: '#ef4444',
   },
   errorText: {
     color: '#ef4444',
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 12,
+    marginLeft: 4,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    backgroundColor: 'white',
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-  },
-  registerButton: {
-    backgroundColor: '#3b82f6',
+  requirementsContainer: {
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
     padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#5170FF',
+  },
+  requirementsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 12,
+    letterSpacing: -0.1,
+  },
+  requirementRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 6,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  requirementIcon: {
+    margin: 0,
+    marginRight: 10,
   },
-  registerButtonText: {
-    color: 'white',
-    fontSize: 16,
+  requirementText: {
+    fontSize: 13,
+    color: '#004AAD',
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  requirementMet: {
+    color: '#22c55e',
     fontWeight: '600',
   },
-  noteContainer: {
+  infoCard: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#5170FF',
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  infoContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#dbeafe',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 24,
   },
-  noteText: {
-    color: '#1e40af',
+  infoIcon: {
+    margin: 0,
+    marginRight: 12,
+  },
+  infoText: {
+    color: '#004AAD',
     fontSize: 14,
-    marginLeft: 12,
     flex: 1,
+    lineHeight: 20,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  registerButton: {
+    backgroundColor: '#2a55ff',
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  buttonContent: {
+    paddingVertical: 10,
+  },
+  buttonLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   loginContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 24,
   },
   loginText: {
-    color: '#6b7280',
-    fontSize: 14,
+    color: '#64748b',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   loginLink: {
-    color: '#3b82f6',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#004AAD',
+    letterSpacing: 0.2,
   },
 });
 

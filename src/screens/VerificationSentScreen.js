@@ -3,21 +3,21 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Button, Card, IconButton } from 'react-native-paper';
 
 const VerificationSentScreen = ({ route, navigation }) => {
   const { email } = route.params;
   const { loading, setLoading } = useAuth();
-  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  const [currentUser] = useState(auth.currentUser);
 
   const handleResendVerification = async () => {
     if (!currentUser) return;
@@ -35,63 +35,85 @@ const VerificationSentScreen = ({ route, navigation }) => {
     }
   };
 
+  const features = [
+    { icon: 'clock-alert', text: 'Tienes 24 horas para verificar tu cuenta' },
+    { icon: 'email-alert', text: 'Revisa tu carpeta de spam o correo no deseado' },
+    { icon: 'delete-clock', text: 'Si no verificas en 24 horas, tu cuenta se eliminará automáticamente' },
+    { icon: 'timer-sand', text: 'Solo puedes solicitar un nuevo email cada 1 hora' },
+  ];
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Icon name="email-check" size={80} color="#3b82f6" />
-        </View>
-
-        <Text style={styles.title}>Verifica tu email</Text>
-
-        <View style={styles.successBox}>
-          <Text style={styles.successTitle}>Email de verificación enviado</Text>
-          <Text style={styles.successText}>
-            Hemos enviado un enlace de verificación a{'\n'}
-            <Text style={styles.emailText}>{email}</Text>
-            {'\n\n'}
-            Por favor revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
-            Después de activar tu cuenta inicia sesión
+      <Card style={styles.card}>
+        <Card.Content>
+          <Image 
+            source={require('../../assets/images/logoprincipal.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          
+          <Text style={styles.title}>Verifica tu email</Text>
+          <Text style={styles.subtitle}>
+            Hemos enviado un enlace de verificación a:
           </Text>
-        </View>
+          <Text style={styles.email}>{email}</Text>
 
-        <View style={styles.warningBox}>
-          <Text style={styles.warningTitle}>Importante:</Text>
-          <View style={styles.listItem}>
-            <Icon name="clock-alert" size={16} color="#92400e" />
-            <Text style={styles.listText}> Tienes 24 horas para verificar tu cuenta</Text>
-          </View>
-          <View style={styles.listItem}>
-            <Icon name="email-alert" size={16} color="#92400e" />
-            <Text style={styles.listText}> Revisa tu carpeta de spam o correo no deseado</Text>
-          </View>
-          <View style={styles.listItem}>
-            <Icon name="delete-clock" size={16} color="#92400e" />
-            <Text style={styles.listText}> Si no verificas en 24 horas, tu cuenta se eliminará automáticamente</Text>
-          </View>
-          <View style={styles.listItem}>
-            <Icon name="timer-sand" size={16} color="#92400e" />
-            <Text style={styles.listText}> Solo puedes solicitar un nuevo email cada 1 hora</Text>
-          </View>
-        </View>
+          <Card style={styles.infoCard}>
+            <Card.Content style={styles.infoContent}>
+              <IconButton
+                icon="information"
+                size={24}
+                iconColor="#0369a1"
+                style={styles.infoIcon}
+              />
+              <Text style={styles.infoText}>
+                Por favor revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
+                Después de activar tu cuenta inicia sesión
+              </Text>
+            </Card.Content>
+          </Card>
 
-        <TouchableOpacity
-          style={[styles.resendButton, loading && styles.buttonDisabled]}
-          onPress={handleResendVerification}
-          disabled={loading}
-        >
-          <Text style={styles.resendButtonText}>
+          <Card style={styles.warningCard}>
+            <Card.Content>
+              <Text style={styles.warningTitle}>Importante:</Text>
+              {features.map((feature, index) => (
+                <View key={index} style={styles.featureItem}>
+                  <IconButton
+                    icon={feature.icon}
+                    size={18}
+                    iconColor="#92400e"
+                    style={styles.featureIcon}
+                  />
+                  <Text style={styles.featureText}>{feature.text}</Text>
+                </View>
+              ))}
+            </Card.Content>
+          </Card>
+
+          <Button
+            mode="contained"
+            onPress={handleResendVerification}
+            loading={loading}
+            disabled={loading}
+            style={styles.resendButton}
+            contentStyle={styles.buttonContent}
+            labelStyle={styles.buttonLabel}
+            icon="email-send"
+          >
             {loading ? 'Enviando...' : 'Reenviar email de verificación'}
-          </Text>
-        </TouchableOpacity>
+          </Button>
 
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.backButtonText}>Volver al inicio de sesión</Text>
-        </TouchableOpacity>
-      </View>
+          <Button
+            mode="outlined"
+            onPress={() => navigation.navigate('Login')}
+            style={styles.backButton}
+            contentStyle={styles.buttonContent}
+            labelStyle={styles.outlinedButtonLabel}
+          >
+            Volver al inicio de sesión
+          </Button>
+        </Card.Content>
+      </Card>
     </ScrollView>
   );
 };
@@ -101,102 +123,129 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: '#f8fafc',
     padding: 20,
+    justifyContent: 'center',
   },
-  content: {
+  card: {
+    borderRadius: 16,
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 24,
+    padding: 8,
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
   },
-  iconContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
+    marginBottom: 10,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#121823ff',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+    lineHeight: 32,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 4,
+    letterSpacing: 0.1,
+  },
+  email: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#004AAD',
     textAlign: 'center',
     marginBottom: 24,
+    letterSpacing: 0.1,
   },
-  successBox: {
-    backgroundColor: '#dbeafe',
+  infoCard: {
+    backgroundColor: '#f0f9ff',
     borderWidth: 1,
-    borderColor: '#93c5fd',
+    borderColor: '#bae6fd',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  successTitle: {
-    color: '#1e40af',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  infoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  successText: {
-    color: '#1e40af',
+  infoIcon: {
+    margin: 0,
+    marginRight: 12,
+  },
+  infoText: {
+    color: '#004AAD',
     fontSize: 14,
+    flex: 1,
     lineHeight: 20,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
-  emailText: {
-    fontWeight: 'bold',
-    color: '#1e3a8a',
-  },
-  warningBox: {
+  warningCard: {
     backgroundColor: '#fef3c7',
     borderWidth: 1,
     borderColor: '#fbbf24',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 24,
   },
   warningTitle: {
-    color: '#92400e',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#92400e',
     marginBottom: 12,
+    letterSpacing: -0.1,
   },
-  listItem: {
+  featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  listText: {
+  featureIcon: {
+    margin: 0,
+    marginRight: 10,
+  },
+  featureText: {
     color: '#92400e',
     fontSize: 14,
-    marginLeft: 8,
     flex: 1,
+    lineHeight: 20,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   resendButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#2a55ff',
     borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
     marginBottom: 12,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  resendButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
   },
   backButton: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#004AAD',
     borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
   },
-  backButtonText: {
-    color: '#374151',
+  buttonContent: {
+    paddingVertical: 10,
+  },
+  buttonLabel: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  outlinedButtonLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#004AAD',
+    letterSpacing: 0.3,
   },
 });
 
