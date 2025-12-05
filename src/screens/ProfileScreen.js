@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -51,13 +51,12 @@ const ProfileScreen = ({ route, navigation }) => {
     console.log("Navegar a post:", post);
   };
 
-  // Función para actualizar la foto de perfil
   const handlePhotoUpdated = (newPhotoUrl) => {
     if (updateProfilePhoto) {
       updateProfilePhoto(newPhotoUrl);
     }
 
-    // Opcional: Recargar datos del servidor después de un tiempo
+    // Recargar datos después de un tiempo
     setTimeout(() => {
       refetch();
     }, 1000);
@@ -145,7 +144,7 @@ const ProfileScreen = ({ route, navigation }) => {
         <View style={styles.headerPlaceholder} />
       </View>
 
-      {/* Contenido principal con ScrollView */}
+      {/* Contenido principal */}
       <ScrollView
         style={styles.content}
         refreshControl={

@@ -28,7 +28,30 @@ const CommentList = ({ comments, onCommentPress }) => {
     return text.substring(0, maxLength).trim() + "...";
   };
 
-  if (comments.length === 0) {
+  // ✅ ADAPTACIÓN: Verificar y formatear comentarios
+  const getFormattedComments = () => {
+    if (!comments || comments.length === 0) return [];
+
+    return comments.map((comment) => {
+      // Usar los campos del nuevo formato de useUserProfile
+      return {
+        id: comment.id,
+        content: comment.contenido || comment.content || "Sin contenido",
+        createdAt: comment.fecha || comment.createdAt,
+        likes: comment.likes || [],
+        // ✅ Campo nuevo: publicacionTitulo
+        postTitle:
+          comment.publicacionTitulo || comment.postTitle || "Publicación",
+        // Campos adicionales para referencia
+        postId: comment.postId,
+        tema: comment.tema || "General",
+      };
+    });
+  };
+
+  const formattedComments = getFormattedComments();
+
+  if (formattedComments.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Card style={styles.emptyCard}>
@@ -46,7 +69,7 @@ const CommentList = ({ comments, onCommentPress }) => {
 
   return (
     <View style={styles.container}>
-      {comments.map((comment) => (
+      {formattedComments.map((comment) => (
         <TouchableOpacity
           key={comment.id}
           style={styles.commentCard}
@@ -54,9 +77,40 @@ const CommentList = ({ comments, onCommentPress }) => {
         >
           <Card style={styles.card}>
             <Card.Content>
+              {/* ✅ Título del post donde se comentó */}
+              {comment.postTitle && (
+                <View style={styles.postTitleContainer}>
+                  <IconButton
+                    icon="file-document"
+                    size={14}
+                    iconColor="#3b82f6"
+                    style={styles.postTitleIcon}
+                  />
+                  <Text style={styles.postTitleText} numberOfLines={2}>
+                    En: {comment.postTitle}
+                  </Text>
+                </View>
+              )}
+
+              {/* Contenido del comentario */}
               <Text style={styles.commentContent} numberOfLines={3}>
-                {truncateText(comment.content || "Sin contenido")}
+                {truncateText(comment.content)}
               </Text>
+
+              {/* ✅ Tema/Foro */}
+              {comment.tema && comment.tema !== "General" && (
+                <View style={styles.topicBadge}>
+                  <IconButton
+                    icon="tag"
+                    size={12}
+                    iconColor="#8b5cf6"
+                    style={styles.topicIcon}
+                  />
+                  <Text style={styles.topicText} numberOfLines={1}>
+                    {comment.tema}
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.commentFooter}>
                 <View style={styles.commentStats}>
@@ -77,20 +131,6 @@ const CommentList = ({ comments, onCommentPress }) => {
                   {formatDate(comment.createdAt)}
                 </Text>
               </View>
-
-              {comment.postTitle && (
-                <View style={styles.postReference}>
-                  <IconButton
-                    icon="file-document"
-                    size={14}
-                    iconColor="#64748b"
-                    style={styles.postIcon}
-                  />
-                  <Text style={styles.postReferenceText} numberOfLines={1}>
-                    En: {comment.postTitle}
-                  </Text>
-                </View>
-              )}
             </Card.Content>
           </Card>
         </TouchableOpacity>
@@ -112,11 +152,51 @@ const styles = StyleSheet.create({
     elevation: 1,
     overflow: "hidden",
   },
+  postTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  postTitleIcon: {
+    margin: 0,
+    padding: 0,
+    marginRight: 6,
+  },
+  postTitleText: {
+    fontSize: 13,
+    color: "#1d4ed8",
+    fontWeight: "500",
+    flex: 1,
+  },
   commentContent: {
     fontSize: 14,
     color: "#4b5563",
     lineHeight: 20,
     marginBottom: 12,
+  },
+  topicBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f3ff",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  topicIcon: {
+    margin: 0,
+    padding: 0,
+    marginRight: 4,
+  },
+  topicText: {
+    fontSize: 11,
+    color: "#7c3aed",
+    fontWeight: "500",
   },
   commentFooter: {
     flexDirection: "row",
@@ -148,25 +228,6 @@ const styles = StyleSheet.create({
   commentDate: {
     fontSize: 12,
     color: "#9ca3af",
-  },
-  postReference: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  postIcon: {
-    margin: 0,
-    padding: 0,
-    marginRight: 6,
-  },
-  postReferenceText: {
-    fontSize: 12,
-    color: "#64748b",
-    flex: 1,
   },
   emptyContainer: {
     alignItems: "center",

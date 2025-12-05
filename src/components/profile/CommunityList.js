@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Image,
 } from "react-native";
 import { IconButton, Card } from "react-native-paper";
 
@@ -27,7 +28,33 @@ const CommunityList = ({ communities, onCommunityPress }) => {
     return text.substring(0, maxLength).trim() + "...";
   };
 
-  if (communities.length === 0) {
+  // ✅ ADAPTACIÓN: Verificar y formatear comunidades
+  const getFormattedCommunities = () => {
+    if (!communities || communities.length === 0) return [];
+
+    return communities.map((community) => {
+      // Usar los campos del nuevo formato de useUserProfile
+      return {
+        id: community.id,
+        // Campo principal: 'nombre' (del nuevo formato) o 'name' (antiguo)
+        name: community.nombre || community.name || "Comunidad",
+        description: community.description || community.descripcion || "",
+        // Fecha: 'fechaUnion' o 'joinDate'
+        joinDate: community.fechaUnion || community.joinDate,
+        // Estadísticas: usar los campos correctos
+        posts: community.publicaciones || community.posts || 0,
+        comments: community.comentarios || community.comments || 0,
+        memberCount: community.memberCount || community.members || 0,
+        lastActivity: community.lastActivity || new Date(),
+        // Imagen
+        image: community.image || community.photoURL || null,
+      };
+    });
+  };
+
+  const formattedCommunities = getFormattedCommunities();
+
+  if (formattedCommunities.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Card style={styles.emptyCard}>
@@ -51,7 +78,7 @@ const CommunityList = ({ communities, onCommunityPress }) => {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
     >
-      {communities.map((community) => (
+      {formattedCommunities.map((community) => (
         <TouchableOpacity
           key={community.id}
           style={styles.communityCard}
@@ -59,8 +86,29 @@ const CommunityList = ({ communities, onCommunityPress }) => {
         >
           <Card style={styles.card}>
             <Card.Content style={styles.cardContent}>
-              {/* Header */}
+              {/* Header con imagen */}
               <View style={styles.cardHeader}>
+                {community.image ? (
+                  <Image
+                    source={{ uri: community.image }}
+                    style={styles.communityImage}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.communityImage,
+                      styles.communityImagePlaceholder,
+                    ]}
+                  >
+                    <IconButton
+                      icon="forum"
+                      size={24}
+                      iconColor="#9ca3af"
+                      style={styles.placeholderIcon}
+                    />
+                  </View>
+                )}
+
                 <View style={styles.communityInfo}>
                   <Text style={styles.communityName} numberOfLines={1}>
                     {community.name}
@@ -85,6 +133,13 @@ const CommunityList = ({ communities, onCommunityPress }) => {
                 />
               </View>
 
+              {/* Descripción */}
+              {community.description && (
+                <Text style={styles.description} numberOfLines={2}>
+                  {truncateText(community.description, 100)}
+                </Text>
+              )}
+
               {/* Estadísticas */}
               <View style={styles.statsContainer}>
                 <View
@@ -100,7 +155,7 @@ const CommunityList = ({ communities, onCommunityPress }) => {
                     style={[styles.statText, { color: "#2a55ff" }]}
                     numberOfLines={1}
                   >
-                    {community.posts || 0} pubs
+                    {community.posts} pubs
                   </Text>
                 </View>
 
@@ -117,11 +172,11 @@ const CommunityList = ({ communities, onCommunityPress }) => {
                     style={[styles.statText, { color: "#22c55e" }]}
                     numberOfLines={1}
                   >
-                    {community.comments || 0} coms
+                    {community.comments} coms
                   </Text>
                 </View>
 
-                {community.memberCount && (
+                {community.memberCount > 0 && (
                   <View
                     style={[styles.statBadge, { backgroundColor: "#faf5ff" }]}
                   >
@@ -140,13 +195,6 @@ const CommunityList = ({ communities, onCommunityPress }) => {
                   </View>
                 )}
               </View>
-
-              {/* Descripción */}
-              {community.description && (
-                <Text style={styles.description} numberOfLines={2}>
-                  {truncateText(community.description, 100)}
-                </Text>
-              )}
 
               {/* Última actividad */}
               {community.lastActivity && (
@@ -185,9 +233,23 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     marginBottom: 12,
+  },
+  communityImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 10,
+    marginRight: 12,
+  },
+  communityImagePlaceholder: {
+    backgroundColor: "#f3f4f6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeholderIcon: {
+    margin: 0,
+    padding: 0,
   },
   communityInfo: {
     flex: 1,
@@ -217,6 +279,12 @@ const styles = StyleSheet.create({
     margin: 0,
     padding: 0,
   },
+  description: {
+    fontSize: 13,
+    color: "#4b5563",
+    lineHeight: 18,
+    marginBottom: 12,
+  },
   statsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -241,12 +309,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     flexShrink: 1,
-  },
-  description: {
-    fontSize: 13,
-    color: "#4b5563",
-    lineHeight: 18,
-    marginBottom: 12,
   },
   lastActivity: {
     borderTopWidth: 1,
