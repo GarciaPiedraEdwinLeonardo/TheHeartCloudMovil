@@ -30,7 +30,8 @@ const ProfileScreen = ({ route, navigation }) => {
   const isOwnProfile = !userId || userId === auth.currentUser?.uid;
   const profileUserId = userId || auth.currentUser?.uid;
 
-  const { userData, loading, error, refetch } = useUserProfile(profileUserId);
+  const { userData, loading, error, refetch, updateProfilePhoto } =
+    useUserProfile(profileUserId);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -43,15 +44,23 @@ const ProfileScreen = ({ route, navigation }) => {
   };
 
   const handleCommunityPress = (community) => {
-    // Navegar a la pantalla del foro cuando esté lista
     console.log("Navegar a foro:", community);
-    // navigation.navigate('Forum', { forumId: community.id });
   };
 
   const handlePostPress = (post) => {
-    // Navegar a la pantalla del post cuando esté lista
     console.log("Navegar a post:", post);
-    // navigation.navigate('Post', { postId: post.id });
+  };
+
+  // Función para actualizar la foto de perfil
+  const handlePhotoUpdated = (newPhotoUrl) => {
+    if (updateProfilePhoto) {
+      updateProfilePhoto(newPhotoUrl);
+    }
+
+    // Opcional: Recargar datos del servidor después de un tiempo
+    setTimeout(() => {
+      refetch();
+    }, 1000);
   };
 
   const renderTabContent = () => {
@@ -149,6 +158,7 @@ const ProfileScreen = ({ route, navigation }) => {
           userData={userData}
           onShowStats={() => setShowStatsModal(true)}
           isOwnProfile={isOwnProfile}
+          onPhotoUpdated={handlePhotoUpdated}
         />
 
         <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -276,17 +286,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
-  },
-  modalBackground: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
   },
   modalContainer: {
-    width: width - 32,
-    maxHeight: height * 0.85,
+    width: width - 40,
+    height: height * 0.8,
     borderRadius: 20,
     overflow: "hidden",
     backgroundColor: "white",
@@ -298,10 +301,6 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-  },
-  modalContent: {
-    width: "100%",
-    height: "100%",
   },
   bottomSpacing: {
     height: 80,

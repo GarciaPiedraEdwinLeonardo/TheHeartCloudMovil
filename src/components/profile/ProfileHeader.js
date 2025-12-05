@@ -1,14 +1,17 @@
-import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { Avatar, IconButton } from "react-native-paper";
+import ProfilePhotoModal from "./ProfilePhotoModal";
 
-const ProfileHeader = ({ userData, onShowStats, isOwnProfile = true }) => {
+const ProfileHeader = ({
+  userData,
+  onShowStats,
+  isOwnProfile = true,
+  onPhotoUpdated,
+}) => {
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
   const formatDate = (date) => {
     if (!date) return "Fecha no disponible";
     try {
@@ -21,16 +24,21 @@ const ProfileHeader = ({ userData, onShowStats, isOwnProfile = true }) => {
     }
   };
 
-  // Obtener datos del usuario con valores por defecto
+  // Obtener datos del usuario
   const userName = userData?.nombreCompleto || "Usuario";
   const specialty =
     userData?.especialidad ||
     userData?.professionalInfo?.specialty ||
     "Especialidad no especificada";
-  const photoURL =
-    userData?.photoURL ||
-    userData?.profileMedia ||
-    "https://via.placeholder.com/100";
+
+  // Obtener la URL de la foto con prioridad: profileMedia -> photoURL -> placeholder
+  const getPhotoUrl = () => {
+    if (userData?.profileMedia) return userData.profileMedia;
+    if (userData?.photoURL) return userData.photoURL;
+    return null; // No usar placeholder automático, manejaremos esto en el Avatar
+  };
+
+  const photoUrl = getPhotoUrl();
   const joinDate = userData?.joinDate || userData?.fechaRegistro;
   const university =
     userData?.professionalInfo?.university || userData?.university;
@@ -47,43 +55,85 @@ const ProfileHeader = ({ userData, onShowStats, isOwnProfile = true }) => {
           <Text style={styles.verifiedText}>Doctor Verificado</Text>
         </View>
       );
-    } else if (verificationStatus === "pending") {
-      return (
-        <View style={styles.pendingBadge}>
-          <IconButton icon="clock" size={16} iconColor="#f59e0b" />
-          <Text style={styles.pendingText}>En verificación</Text>
-        </View>
-      );
     }
     return null;
   };
 
+  const handlePhotoUpdate = (newPhotoUrl) => {
+    if (onPhotoUpdated) {
+      onPhotoUpdated(newPhotoUrl);
+    }
+    setImageError(false); // Reset error cuando se sube nueva foto
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+  };
+
+  const renderAvatar = () => {
+    // Si hay URL y no hay error, mostrar la imagen
+    if (photoUrl && !imageError) {
+      return (
+        <Avatar.Image
+          size={100}
+          source={{ uri: photoUrl }}
+          onError={handleImageError}
+        />
+      );
+    }
+
+    // Si no hay foto o hay error, mostrar placeholder con iniciales
+    const getInitials = () => {
+      if (!userName) return "U";
+      const names = userName.split(" ");
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[1][0]}`.toUpperCase();
+      }
+      return userName[0].toUpperCase();
+    };
+
+    return (
+      <Avatar.Text
+        size={100}
+        label={getInitials()}
+        style={styles.avatarPlaceholder}
+        labelStyle={styles.avatarLabel}
+      />
+    );
+  };
+
   return (
     <View style={styles.container}>
+      {/* Modal para cambiar foto */}
+      <ProfilePhotoModal
+        isVisible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        currentPhoto={photoUrl}
+        onPhotoUpdated={handlePhotoUpdate}
+      />
+
       <View style={styles.topSection}>
-        <View style={styles.photoContainer}>
-          <Avatar.Image
-            size={100}
-            source={{
-              uri: photoURL,
-            }}
-          />
+        {/* Foto de perfil */}
+        <TouchableOpacity
+          style={styles.photoContainer}
+          onPress={() => isOwnProfile && setShowPhotoModal(true)}
+          disabled={!isOwnProfile}
+        >
+          {renderAvatar()}
           {isOwnProfile && (
-            <TouchableOpacity
-              style={styles.cameraButton}
-              onPress={() => console.log("Cambiar foto")}
-            >
+            <View style={styles.cameraButton}>
               <IconButton
                 icon="camera"
                 size={16}
                 iconColor="white"
                 style={styles.cameraIcon}
               />
-            </TouchableOpacity>
+            </View>
           )}
-        </View>
+        </TouchableOpacity>
 
-        <View style={styles.nameSection}>
+        {/* Información del usuario */}
+        <View style={styles.infoSection}>
           <View style={styles.nameRow}>
             <Text style={styles.name} numberOfLines={2}>
               {userName}
@@ -94,28 +144,20 @@ const ProfileHeader = ({ userData, onShowStats, isOwnProfile = true }) => {
           <Text style={styles.specialty} numberOfLines={2}>
             {specialty}
           </Text>
-        </View>
-      </View>
 
-      {/* Información adicional */}
-      <View style={styles.metaSection}>
-        <Text style={styles.metaText}>
-          Miembro desde {formatDate(joinDate)}
-        </Text>
-
-        {university && (
-          <View style={styles.universityBadge}>
-            <Text style={styles.universityText}>{university}</Text>
-          </View>
-        )}
-
-        {userData?.professionalInfo?.titulationYear && (
-          <View style={styles.yearBadge}>
-            <Text style={styles.yearText}>
-              Graduado {userData.professionalInfo.titulationYear}
+          {/* Información adicional */}
+          <View style={styles.metaInfo}>
+            <Text style={styles.metaText}>
+              Miembro desde {formatDate(joinDate)}
             </Text>
+
+            {university && (
+              <View style={styles.universityBadge}>
+                <Text style={styles.universityText}>{university}</Text>
+              </View>
+            )}
           </View>
-        )}
+        </View>
       </View>
 
       {/* Estadísticas rápidas */}
@@ -208,7 +250,15 @@ const styles = StyleSheet.create({
     margin: 0,
     padding: 0,
   },
-  nameSection: {
+  avatarPlaceholder: {
+    backgroundColor: "#2a55ff",
+  },
+  avatarLabel: {
+    fontSize: 30,
+    fontWeight: "600",
+    color: "white",
+  },
+  infoSection: {
     flex: 1,
     justifyContent: "center",
   },
@@ -240,60 +290,30 @@ const styles = StyleSheet.create({
     color: "#2a55ff",
     fontWeight: "600",
   },
-  pendingBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-  pendingText: {
-    fontSize: 12,
-    color: "#92400e",
-    fontWeight: "600",
-  },
   specialty: {
     fontSize: 16,
     color: "#2a55ff",
     fontWeight: "600",
+    marginBottom: 12,
   },
-  metaSection: {
-    marginBottom: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+  metaInfo: {
+    marginBottom: 8,
   },
   metaText: {
     fontSize: 14,
     color: "#64748b",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   universityBadge: {
     backgroundColor: "#f8fafc",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    marginBottom: 8,
+    alignSelf: "flex-start",
   },
   universityText: {
     fontSize: 14,
     color: "#475569",
-    fontWeight: "500",
-  },
-  yearBadge: {
-    backgroundColor: "#f0f9ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-  },
-  yearText: {
-    fontSize: 14,
-    color: "#2a55ff",
     fontWeight: "500",
   },
   statsSection: {

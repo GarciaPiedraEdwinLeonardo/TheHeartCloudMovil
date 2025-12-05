@@ -1,5 +1,4 @@
-// src/hooks/useUserProfile.js
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   collection,
   query,
@@ -15,7 +14,7 @@ export const useUserProfile = (userId) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -79,6 +78,7 @@ export const useUserProfile = (userId) => {
         // Foto
         photoURL:
           userBasicData.profileMedia || "https://via.placeholder.com/100",
+        profileMedia: userBasicData.profileMedia || null,
         // Fechas
         joinDate: userBasicData.joinDate,
         fechaRegistro: userBasicData.joinDate,
@@ -118,24 +118,39 @@ export const useUserProfile = (userId) => {
       };
 
       setUserData(formattedData);
+      return formattedData;
     } catch (err) {
       console.error("Error fetching user profile:", err);
       setError(err.message || "Error al cargar el perfil");
+      return null;
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     if (userId) {
       fetchUserProfile();
     }
-  }, [userId]);
+  }, [userId, fetchUserProfile]);
+
+  // Función para actualizar la foto localmente
+  const updateProfilePhoto = (photoUrl) => {
+    setUserData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        photoURL: photoUrl,
+        profileMedia: photoUrl,
+      };
+    });
+  };
 
   return {
     userData,
     loading,
     error,
     refetch: fetchUserProfile,
+    updateProfilePhoto,
   };
 };
