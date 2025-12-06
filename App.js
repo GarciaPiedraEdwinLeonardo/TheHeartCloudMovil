@@ -11,6 +11,7 @@ import ProfileScreen from "./src/screens/ProfileScreen";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./src/config/firebase";
 import { View, Text, ActivityIndicator } from "react-native";
+import { PaperProvider } from "react-native-paper";
 
 const Stack = createNativeStackNavigator();
 
@@ -47,39 +48,43 @@ function App() {
   }
 
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {user ? (
-            // Usuario autenticado - Pantallas principales
-            <>
-              <Stack.Screen name="Home" component={HomeScreen} />
-              <Stack.Screen
-                name="Profile"
-                component={ProfileScreen}
-                options={{
-                  animation: "slide_from_right",
-                }}
-              />
-            </>
-          ) : (
-            // Usuario NO autenticado - Pantallas de autenticación
-            <>
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Register" component={RegisterScreen} />
-              <Stack.Screen
-                name="ForgotPassword"
-                component={ForgotPasswordScreen}
-              />
-              <Stack.Screen
-                name="VerificationSent"
-                component={VerificationSentScreen}
-              />
-            </>
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
-    </AuthProvider>
+    <PaperProvider>
+      {" "}
+      {/* ← ENVUELVE TODO CON PaperProvider */}
+      <AuthProvider>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {user ? (
+              // Usuario autenticado - Pantallas principales
+              <>
+                <Stack.Screen name="Home" component={HomeScreen} />
+                <Stack.Screen
+                  name="Profile"
+                  component={ProfileScreen}
+                  options={{
+                    animation: "slide_from_right",
+                  }}
+                />
+              </>
+            ) : (
+              // Usuario NO autenticado - Pantallas de autenticación
+              <>
+                <Stack.Screen name="Login" component={LoginScreen} />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+                <Stack.Screen
+                  name="ForgotPassword"
+                  component={ForgotPasswordScreen}
+                />
+                <Stack.Screen
+                  name="VerificationSent"
+                  component={VerificationSentScreen}
+                />
+              </>
+            )}
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AuthProvider>
+    </PaperProvider>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   Dimensions,
+  Animated,
 } from "react-native";
 import { IconButton, ActivityIndicator } from "react-native-paper";
 import { auth } from "../config/firebase";
@@ -16,7 +17,7 @@ import ProfileHeader from "../components/profile/ProfileHeader";
 import ProfileTabs from "../components/profile/ProfileTabs";
 import ProfileStats from "../components/profile/ProfileStats";
 import CommunityList from "../components/profile/CommunityList";
-import PublicationList from "../components/profile/PublicationList";
+import PostList from "../components/profile/PostList";
 import CommentList from "../components/profile/CommentList";
 
 const { width, height } = Dimensions.get("window");
@@ -26,6 +27,7 @@ const ProfileScreen = ({ route, navigation }) => {
   const [activeTab, setActiveTab] = useState("posts");
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const isOwnProfile = !userId || userId === auth.currentUser?.uid;
   const profileUserId = userId || auth.currentUser?.uid;
@@ -44,23 +46,44 @@ const ProfileScreen = ({ route, navigation }) => {
   };
 
   const handleCommunityPress = (community) => {
-    console.log("Navegar a foro:", community);
+    navigation.navigate("Forum", { forumId: community.id });
   };
 
   const handlePostPress = (post) => {
-    console.log("Navegar a post:", post);
+    navigation.navigate("PostDetail", { postId: post.id });
+  };
+
+  const handleCommentClick = (post) => {
+    navigation.navigate("PostDetail", {
+      postId: post.id,
+      focusComments: true,
+    });
+  };
+
+  const handleAuthorPress = (authorId) => {
+    if (authorId === auth.currentUser?.uid) return;
+    navigation.navigate("Profile", { userId: authorId });
+  };
+
+  const handleForumPress = (forumId) => {
+    navigation.navigate("Forum", { forumId });
   };
 
   const handlePhotoUpdated = (newPhotoUrl) => {
     if (updateProfilePhoto) {
       updateProfilePhoto(newPhotoUrl);
     }
-
-    // Recargar datos después de un tiempo
     setTimeout(() => {
       refetch();
     }, 1000);
   };
+
+  // Animación para el header
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0.9],
+    extrapolate: "clamp",
+  });
 
   const renderTabContent = () => {
     if (!userData) return null;
@@ -68,24 +91,36 @@ const ProfileScreen = ({ route, navigation }) => {
     switch (activeTab) {
       case "posts":
         return (
-          <PublicationList
-            posts={userData.posts || []}
-            onPostPress={handlePostPress}
-          />
+          <View style={styles.tabContent}>
+            <PostList
+              posts={userData.posts || []}
+              onPostPress={handlePostPress}
+              onCommentClick={handleCommentClick}
+              onAuthorPress={handleAuthorPress}
+              onForumPress={handleForumPress}
+              onPostUpdated={() => refetch()}
+              onPostDeleted={() => refetch()}
+            />
+          </View>
         );
       case "comments":
         return (
-          <CommentList
-            comments={userData.comments || []}
-            onCommentPress={handlePostPress}
-          />
+          <View style={styles.tabContent}>
+            <CommentList
+              comments={userData.comments || []}
+              onCommentPress={handlePostPress}
+            />
+          </View>
         );
       case "communities":
         return (
-          <CommunityList
-            communities={userData.communities || []}
-            onCommunityPress={handleCommunityPress}
-          />
+          <View style={styles.tabContent}>
+            <CommunityList
+              communities={userData.communities || []}
+              onCommunityPress={handleCommunityPress}
+              scrollEnabled={false}
+            />
+          </View>
         );
       default:
         return null;
@@ -135,24 +170,32 @@ const ProfileScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header con botón de volver */}
-      <View style={styles.screenHeader}>
+      {/* Header fijo con botón de volver */}
+      <Animated.View style={[styles.screenHeader, { opacity: headerOpacity }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButtonHeader}>
           <IconButton icon="arrow-left" size={24} />
         </TouchableOpacity>
         <Text style={styles.screenTitle}>Perfil</Text>
         <View style={styles.headerPlaceholder} />
-      </View>
+      </Animated.View>
 
-      {/* Contenido principal */}
+      {/* ScrollView principal */}
       <ScrollView
-        style={styles.content}
+        style={styles.scrollView}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          const scrollEvent = Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          );
+          scrollEvent(event);
+        }}
       >
+        {/* Header del perfil */}
         <ProfileHeader
           userData={userData}
           onShowStats={() => setShowStatsModal(true)}
@@ -160,9 +203,11 @@ const ProfileScreen = ({ route, navigation }) => {
           onPhotoUpdated={handlePhotoUpdated}
         />
 
+        {/* Tabs */}
         <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <View style={styles.tabContentContainer}>{renderTabContent()}</View>
+        {/* Contenido de la pestaña activa */}
+        {renderTabContent()}
 
         {/* Espacio para el bottom navigation */}
         <View style={styles.bottomSpacing} />
@@ -194,6 +239,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   screenHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -203,7 +252,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
-    zIndex: 10,
+    zIndex: 100,
   },
   backButtonHeader: {
     marginRight: 12,
@@ -217,16 +266,12 @@ const styles = StyleSheet.create({
   headerPlaceholder: {
     width: 40,
   },
-  content: {
+  scrollView: {
     flex: 1,
+    marginTop: 106, // Altura del header fijo (50 + 12 + 44 aprox)
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 100,
-  },
-  tabContentContainer: {
-    minHeight: 300,
+  tabContent: {
+    minHeight: 400, // Altura mínima para el contenido
   },
   loadingContainer: {
     flex: 1,
@@ -293,16 +338,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "white",
     elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
   },
   bottomSpacing: {
-    height: 80,
+    height: 100,
   },
 });
 

@@ -3,13 +3,20 @@ import {
   View,
   Text,
   StyleSheet,
+  FlatList,
+  RefreshControl,
   TouchableOpacity,
-  ScrollView,
   Image,
 } from "react-native";
 import { IconButton, Card } from "react-native-paper";
 
-const CommunityList = ({ communities, onCommunityPress }) => {
+const CommunityList = ({
+  communities,
+  onCommunityPress,
+  refreshing = false,
+  onRefresh,
+  scrollEnabled = true, // Nueva prop para controlar el scroll interno
+}) => {
   const formatDate = (date) => {
     if (!date) return "Fecha no disponible";
     try {
@@ -28,25 +35,22 @@ const CommunityList = ({ communities, onCommunityPress }) => {
     return text.substring(0, maxLength).trim() + "...";
   };
 
-  // ✅ ADAPTACIÓN: Verificar y formatear comunidades
+  // Formatear datos de las comunidades
   const getFormattedCommunities = () => {
     if (!communities || communities.length === 0) return [];
 
     return communities.map((community) => {
-      // Usar los campos del nuevo formato de useUserProfile
       return {
         id: community.id,
-        // Campo principal: 'nombre' (del nuevo formato) o 'name' (antiguo)
         name: community.nombre || community.name || "Comunidad",
         description: community.description || community.descripcion || "",
-        // Fecha: 'fechaUnion' o 'joinDate'
-        joinDate: community.fechaUnion || community.joinDate,
-        // Estadísticas: usar los campos correctos
+        joinDate:
+          community.fechaUnion || community.joinDate || community.createdAt,
         posts: community.publicaciones || community.posts || 0,
         comments: community.comentarios || community.comments || 0,
         memberCount: community.memberCount || community.members || 0,
-        lastActivity: community.lastActivity || new Date(),
-        // Imagen
+        lastActivity:
+          community.lastActivity || community.lastPostAt || community.updatedAt,
         image: community.image || community.photoURL || null,
       };
     });
@@ -54,170 +58,183 @@ const CommunityList = ({ communities, onCommunityPress }) => {
 
   const formattedCommunities = getFormattedCommunities();
 
-  if (formattedCommunities.length === 0) {
+  const renderCommunityItem = (item) => (
+    <TouchableOpacity
+      style={styles.communityCard}
+      onPress={() => onCommunityPress && onCommunityPress(item)}
+      key={item.id}
+    >
+      <Card style={styles.card}>
+        <Card.Content style={styles.cardContent}>
+          {/* Header con imagen */}
+          <View style={styles.cardHeader}>
+            {item.image ? (
+              <Image
+                source={{ uri: item.image }}
+                style={styles.communityImage}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.communityImage,
+                  styles.communityImagePlaceholder,
+                ]}
+              >
+                <IconButton
+                  icon="forum"
+                  size={24}
+                  iconColor="#9ca3af"
+                  style={styles.placeholderIcon}
+                />
+              </View>
+            )}
+
+            <View style={styles.communityInfo}>
+              <Text style={styles.communityName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View style={styles.dateRow}>
+                <IconButton
+                  icon="calendar"
+                  size={14}
+                  iconColor="#22c55e"
+                  style={styles.dateIcon}
+                />
+                <Text style={styles.dateText} numberOfLines={1}>
+                  Se unió el {formatDate(item.joinDate)}
+                </Text>
+              </View>
+            </View>
+            <IconButton
+              icon="chevron-right"
+              size={20}
+              iconColor="#9ca3af"
+              style={styles.arrowIcon}
+            />
+          </View>
+
+          {/* Descripción */}
+          {item.description && (
+            <Text style={styles.description} numberOfLines={2}>
+              {truncateText(item.description, 100)}
+            </Text>
+          )}
+
+          {/* Estadísticas */}
+          <View style={styles.statsContainer}>
+            <View style={[styles.statBadge, { backgroundColor: "#eff6ff" }]}>
+              <IconButton
+                icon="file-document"
+                size={14}
+                iconColor="#2a55ff"
+                style={styles.statIcon}
+              />
+              <Text
+                style={[styles.statText, { color: "#2a55ff" }]}
+                numberOfLines={1}
+              >
+                {item.posts} pubs
+              </Text>
+            </View>
+
+            <View style={[styles.statBadge, { backgroundColor: "#f0fdf4" }]}>
+              <IconButton
+                icon="comment"
+                size={14}
+                iconColor="#22c55e"
+                style={styles.statIcon}
+              />
+              <Text
+                style={[styles.statText, { color: "#22c55e" }]}
+                numberOfLines={1}
+              >
+                {item.comments} coms
+              </Text>
+            </View>
+
+            {item.memberCount > 0 && (
+              <View style={[styles.statBadge, { backgroundColor: "#faf5ff" }]}>
+                <IconButton
+                  icon="account-group"
+                  size={14}
+                  iconColor="#8b5cf6"
+                  style={styles.statIcon}
+                />
+                <Text
+                  style={[styles.statText, { color: "#8b5cf6" }]}
+                  numberOfLines={1}
+                >
+                  {item.memberCount} mbrs
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Última actividad */}
+          {item.lastActivity && (
+            <View style={styles.lastActivity}>
+              <Text style={styles.lastActivityText} numberOfLines={1}>
+                Últ. actividad: {formatDate(item.lastActivity)}
+              </Text>
+            </View>
+          )}
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
+
+  // Estado vacío
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Card style={styles.emptyCard}>
+        <Card.Content style={styles.emptyContent}>
+          <IconButton icon="forum" size={48} iconColor="#d1d5db" />
+          <Text style={styles.emptyTitle}>
+            Aún no participas en comunidades
+          </Text>
+          <Text style={styles.emptyText}>
+            Únete a comunidades médicas para empezar a participar
+          </Text>
+        </Card.Content>
+      </Card>
+    </View>
+  );
+
+  // Si scrollEnabled es true, usar FlatList (para uso independiente)
+  if (scrollEnabled) {
     return (
-      <View style={styles.emptyContainer}>
-        <Card style={styles.emptyCard}>
-          <Card.Content style={styles.emptyContent}>
-            <IconButton icon="forum" size={48} iconColor="#d1d5db" />
-            <Text style={styles.emptyTitle}>
-              Aún no participas en comunidades
-            </Text>
-            <Text style={styles.emptyText}>
-              Únete a comunidades médicas para empezar a participar
-            </Text>
-          </Card.Content>
-        </Card>
-      </View>
+      <FlatList
+        data={formattedCommunities}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => renderCommunityItem(item)}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          ) : undefined
+        }
+        ListEmptyComponent={renderEmptyState}
+        initialNumToRender={5}
+        maxToRenderPerBatch={10}
+      />
     );
   }
 
+  // Si scrollEnabled es false, renderizar como View simple (para uso anidado)
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.scrollContent}
-    >
-      {formattedCommunities.map((community) => (
-        <TouchableOpacity
-          key={community.id}
-          style={styles.communityCard}
-          onPress={() => onCommunityPress && onCommunityPress(community)}
-        >
-          <Card style={styles.card}>
-            <Card.Content style={styles.cardContent}>
-              {/* Header con imagen */}
-              <View style={styles.cardHeader}>
-                {community.image ? (
-                  <Image
-                    source={{ uri: community.image }}
-                    style={styles.communityImage}
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.communityImage,
-                      styles.communityImagePlaceholder,
-                    ]}
-                  >
-                    <IconButton
-                      icon="forum"
-                      size={24}
-                      iconColor="#9ca3af"
-                      style={styles.placeholderIcon}
-                    />
-                  </View>
-                )}
-
-                <View style={styles.communityInfo}>
-                  <Text style={styles.communityName} numberOfLines={1}>
-                    {community.name}
-                  </Text>
-                  <View style={styles.dateRow}>
-                    <IconButton
-                      icon="calendar"
-                      size={14}
-                      iconColor="#22c55e"
-                      style={styles.dateIcon}
-                    />
-                    <Text style={styles.dateText} numberOfLines={1}>
-                      Se unió el {formatDate(community.joinDate)}
-                    </Text>
-                  </View>
-                </View>
-                <IconButton
-                  icon="chevron-right"
-                  size={20}
-                  iconColor="#9ca3af"
-                  style={styles.arrowIcon}
-                />
-              </View>
-
-              {/* Descripción */}
-              {community.description && (
-                <Text style={styles.description} numberOfLines={2}>
-                  {truncateText(community.description, 100)}
-                </Text>
-              )}
-
-              {/* Estadísticas */}
-              <View style={styles.statsContainer}>
-                <View
-                  style={[styles.statBadge, { backgroundColor: "#eff6ff" }]}
-                >
-                  <IconButton
-                    icon="file-document"
-                    size={14}
-                    iconColor="#2a55ff"
-                    style={styles.statIcon}
-                  />
-                  <Text
-                    style={[styles.statText, { color: "#2a55ff" }]}
-                    numberOfLines={1}
-                  >
-                    {community.posts} pubs
-                  </Text>
-                </View>
-
-                <View
-                  style={[styles.statBadge, { backgroundColor: "#f0fdf4" }]}
-                >
-                  <IconButton
-                    icon="comment"
-                    size={14}
-                    iconColor="#22c55e"
-                    style={styles.statIcon}
-                  />
-                  <Text
-                    style={[styles.statText, { color: "#22c55e" }]}
-                    numberOfLines={1}
-                  >
-                    {community.comments} coms
-                  </Text>
-                </View>
-
-                {community.memberCount > 0 && (
-                  <View
-                    style={[styles.statBadge, { backgroundColor: "#faf5ff" }]}
-                  >
-                    <IconButton
-                      icon="account-group"
-                      size={14}
-                      iconColor="#8b5cf6"
-                      style={styles.statIcon}
-                    />
-                    <Text
-                      style={[styles.statText, { color: "#8b5cf6" }]}
-                      numberOfLines={1}
-                    >
-                      {community.memberCount} mbrs
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Última actividad */}
-              {community.lastActivity && (
-                <View style={styles.lastActivity}>
-                  <Text style={styles.lastActivityText} numberOfLines={1}>
-                    Últ. actividad: {formatDate(community.lastActivity)}
-                  </Text>
-                </View>
-              )}
-            </Card.Content>
-          </Card>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
+    <View style={styles.listContent}>
+      {formattedCommunities.length === 0
+        ? renderEmptyState()
+        : formattedCommunities.map((item) => renderCommunityItem(item))}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 20,
+  listContent: {
+    padding: 16,
+    paddingBottom: 80,
   },
   communityCard: {
     marginBottom: 12,
@@ -320,8 +337,10 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
   },
   emptyContainer: {
-    alignItems: "center",
+    flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
     paddingVertical: 40,
   },
   emptyCard: {

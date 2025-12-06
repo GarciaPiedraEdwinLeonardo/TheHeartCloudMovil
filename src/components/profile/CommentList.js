@@ -1,8 +1,16 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Card, IconButton } from "react-native-paper";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
+import { IconButton } from "react-native-paper";
 
 const CommentList = ({ comments, onCommentPress }) => {
+  const [expandedComments, setExpandedComments] = useState({});
+
   const formatDate = (date) => {
     if (!date) return "";
     try {
@@ -13,7 +21,6 @@ const CommentList = ({ comments, onCommentPress }) => {
 
         if (diffHours < 1) return "Hace unos minutos";
         if (diffHours < 24) return `Hace ${diffHours} horas`;
-        if (diffHours < 168) return `Hace ${Math.floor(diffHours / 24)} días`;
         return commentDate.toLocaleDateString("es-ES");
       }
       return new Date(date).toLocaleDateString("es-ES");
@@ -22,135 +29,151 @@ const CommentList = ({ comments, onCommentPress }) => {
     }
   };
 
-  const truncateText = (text, maxLength = 120) => {
-    if (!text) return "";
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength).trim() + "...";
-  };
-
-  // ✅ ADAPTACIÓN: Verificar y formatear comentarios
+  // Formatear comentarios
   const getFormattedComments = () => {
     if (!comments || comments.length === 0) return [];
 
-    return comments.map((comment) => {
-      // Usar los campos del nuevo formato de useUserProfile
-      return {
-        id: comment.id,
-        content: comment.contenido || comment.content || "Sin contenido",
-        createdAt: comment.fecha || comment.createdAt,
-        likes: comment.likes || [],
-        // ✅ Campo nuevo: publicacionTitulo
-        postTitle:
-          comment.publicacionTitulo || comment.postTitle || "Publicación",
-        // Campos adicionales para referencia
-        postId: comment.postId,
-        tema: comment.tema || "General",
-      };
-    });
+    return comments.map((comment) => ({
+      id: comment.id,
+      content: comment.contenido || comment.content || "Sin contenido",
+      createdAt: comment.fecha || comment.createdAt || comment.createdAt,
+      likes: comment.likes || [],
+      postTitle:
+        comment.publicacionTitulo || comment.postTitle || "Publicación",
+      postId: comment.postId,
+      tema: comment.tema || "General",
+      usuarioComentarista: comment.usuarioComentarista || "Usuario",
+      rolComentarista: comment.rolComentarista || "Médico",
+    }));
+  };
+
+  const toggleCommentExpansion = (commentId) => {
+    setExpandedComments((prev) => ({
+      ...prev,
+      [commentId]: !prev[commentId],
+    }));
   };
 
   const formattedComments = getFormattedComments();
 
+  const renderCommentItem = (comment) => {
+    const isExpanded = expandedComments[comment.id];
+    const shouldShowExpand = comment.content && comment.content.length > 150;
+
+    return (
+      <TouchableOpacity
+        key={comment.id}
+        style={styles.commentCard}
+        onPress={() => onCommentPress && onCommentPress(comment)}
+      >
+        <View style={styles.card}>
+          {/* Título del post */}
+          {comment.postTitle && (
+            <View style={styles.postTitleContainer}>
+              <IconButton
+                icon="file-document"
+                size={14}
+                iconColor="#3b82f6"
+                style={styles.postTitleIcon}
+              />
+              <Text style={styles.postTitleText} numberOfLines={2}>
+                En: {comment.postTitle}
+              </Text>
+            </View>
+          )}
+
+          {/* Contenido */}
+          <View style={styles.contentContainer}>
+            {shouldShowExpand && !isExpanded ? (
+              <Text style={styles.commentContent} numberOfLines={4}>
+                {comment.content}
+              </Text>
+            ) : (
+              <ScrollView
+                style={styles.commentScrollView}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+              >
+                <Text style={styles.commentContent}>{comment.content}</Text>
+              </ScrollView>
+            )}
+
+            {shouldShowExpand && (
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={() => toggleCommentExpansion(comment.id)}
+              >
+                <Text style={styles.expandButtonText}>
+                  {isExpanded ? "Mostrar menos" : "Leer más"}
+                </Text>
+                <IconButton
+                  icon={isExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  iconColor="#3b82f6"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Información */}
+          <View style={styles.infoContainer}>
+            <Text style={styles.commenterName}>
+              {comment.usuarioComentarista}
+              {comment.rolComentarista && ` • ${comment.rolComentarista}`}
+            </Text>
+            <Text style={styles.commentDate}>
+              {formatDate(comment.createdAt)}
+            </Text>
+          </View>
+
+          {/* Likes */}
+          <View style={styles.likesContainer}>
+            <IconButton
+              icon="heart"
+              size={14}
+              iconColor="#ef4444"
+              style={styles.heartIcon}
+            />
+            <Text style={styles.likesText}>{comment.likes?.length || 0}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   if (formattedComments.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Card style={styles.emptyCard}>
-          <Card.Content style={styles.emptyContent}>
-            <IconButton icon="comment" size={48} iconColor="#d1d5db" />
-            <Text style={styles.emptyTitle}>Aún no has comentado</Text>
-            <Text style={styles.emptyText}>
-              Cuando comentes en publicaciones, aparecerán aquí.
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={styles.emptyCard}>
+          <IconButton icon="comment" size={48} iconColor="#d1d5db" />
+          <Text style={styles.emptyTitle}>Aún no has comentado</Text>
+          <Text style={styles.emptyText}>
+            Cuando comentes en publicaciones, aparecerán aquí.
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {formattedComments.map((comment) => (
-        <TouchableOpacity
-          key={comment.id}
-          style={styles.commentCard}
-          onPress={() => onCommentPress && onCommentPress(comment)}
-        >
-          <Card style={styles.card}>
-            <Card.Content>
-              {/* ✅ Título del post donde se comentó */}
-              {comment.postTitle && (
-                <View style={styles.postTitleContainer}>
-                  <IconButton
-                    icon="file-document"
-                    size={14}
-                    iconColor="#3b82f6"
-                    style={styles.postTitleIcon}
-                  />
-                  <Text style={styles.postTitleText} numberOfLines={2}>
-                    En: {comment.postTitle}
-                  </Text>
-                </View>
-              )}
-
-              {/* Contenido del comentario */}
-              <Text style={styles.commentContent} numberOfLines={3}>
-                {truncateText(comment.content)}
-              </Text>
-
-              {/* ✅ Tema/Foro */}
-              {comment.tema && comment.tema !== "General" && (
-                <View style={styles.topicBadge}>
-                  <IconButton
-                    icon="tag"
-                    size={12}
-                    iconColor="#8b5cf6"
-                    style={styles.topicIcon}
-                  />
-                  <Text style={styles.topicText} numberOfLines={1}>
-                    {comment.tema}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.commentFooter}>
-                <View style={styles.commentStats}>
-                  <View style={styles.statItem}>
-                    <IconButton
-                      icon="heart"
-                      size={16}
-                      iconColor="#ef4444"
-                      style={styles.statIcon}
-                    />
-                    <Text style={styles.statText}>
-                      {comment.likes?.length || 0}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.commentDate}>
-                  {formatDate(comment.createdAt)}
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
-        </TouchableOpacity>
-      ))}
+      {formattedComments.map((comment) => renderCommentItem(comment))}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    paddingHorizontal: 16,
   },
   commentCard: {
     marginBottom: 12,
   },
   card: {
-    borderRadius: 12,
     backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
     elevation: 1,
-    overflow: "hidden",
   },
   postTitleContainer: {
     flexDirection: "row",
@@ -172,62 +195,55 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
+  contentContainer: {
+    marginBottom: 12,
+  },
   commentContent: {
     fontSize: 14,
     color: "#4b5563",
     lineHeight: 20,
-    marginBottom: 12,
   },
-  topicBadge: {
+  commentScrollView: {
+    maxHeight: 200,
+  },
+  expandButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f5f3ff",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
     alignSelf: "flex-start",
-    marginBottom: 12,
+    marginTop: 8,
   },
-  topicIcon: {
-    margin: 0,
-    padding: 0,
-    marginRight: 4,
-  },
-  topicText: {
-    fontSize: 11,
-    color: "#7c3aed",
+  expandButtonText: {
+    fontSize: 14,
+    color: "#3b82f6",
     fontWeight: "500",
   },
-  commentFooter: {
+  infoContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    paddingTop: 12,
     marginBottom: 8,
   },
-  commentStats: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginRight: 16,
-  },
-  statIcon: {
-    margin: 0,
-    padding: 0,
-    marginRight: 4,
-  },
-  statText: {
-    fontSize: 14,
-    color: "#6b7280",
+  commenterName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
   },
   commentDate: {
     fontSize: 12,
     color: "#9ca3af",
+  },
+  likesContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  heartIcon: {
+    margin: 0,
+    padding: 0,
+    marginRight: 4,
+  },
+  likesText: {
+    fontSize: 14,
+    color: "#6b7280",
   },
   emptyContainer: {
     alignItems: "center",
@@ -239,9 +255,6 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: "white",
     borderRadius: 16,
-    alignItems: "center",
-  },
-  emptyContent: {
     alignItems: "center",
   },
   emptyTitle: {
