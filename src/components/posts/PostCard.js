@@ -56,6 +56,29 @@ const PostCard = ({
     }
   }, [post, currentUser]);
 
+  // Función para obtener el nombre del autor (usa email si name es null)
+  const getAuthorName = () => {
+    if (post.authorName) return post.authorName;
+
+    // Si viene de authorData, intenta construir el nombre
+    if (post.authorData) {
+      const name = post.authorData.name?.name;
+      const lastName = post.authorData.name?.apellidopat;
+
+      if (name) {
+        return `${name} ${lastName || ""}`.trim();
+      }
+
+      // Si no hay name, usar email
+      if (post.authorData.email) {
+        return post.authorData.email;
+      }
+    }
+
+    // Si no hay nada, usar email pasado como prop o texto genérico
+    return post.authorEmail || "Usuario";
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
     try {
@@ -118,6 +141,8 @@ const PostCard = ({
     }
   };
 
+  const authorName = getAuthorName();
+
   return (
     <>
       <View style={styles.container}>
@@ -138,20 +163,26 @@ const PostCard = ({
               </View>
             )}
             <View style={styles.authorDetails}>
-              <Text style={styles.authorName} numberOfLines={1}>
-                {post.authorName}
-              </Text>
+              <View style={styles.authorNameRow}>
+                <Text style={styles.authorName} numberOfLines={1}>
+                  {authorName}
+                </Text>
+                {post.authorVerified && (
+                  <View style={styles.verifiedBadge}>
+                    <IconButton
+                      icon="check-decagram"
+                      size={12}
+                      iconColor="#10b981"
+                    />
+                  </View>
+                )}
+              </View>
+
+              {/* Especialidad médica - diseño simple */}
               {post.authorSpecialty && (
-                <View style={styles.specialtyBadge}>
-                  <IconButton
-                    icon="briefcase-medical"
-                    size={10}
-                    iconColor="#4f46e5"
-                  />
-                  <Text style={styles.specialtyText} numberOfLines={1}>
-                    {post.authorSpecialty}
-                  </Text>
-                </View>
+                <Text style={styles.specialtyText} numberOfLines={1}>
+                  {post.authorSpecialty}
+                </Text>
               )}
             </View>
           </TouchableOpacity>
@@ -162,11 +193,6 @@ const PostCard = ({
                 style={styles.forumBadge}
                 onPress={() => onForumPress && onForumPress(post.forumId)}
               >
-                <IconButton
-                  icon="account-group"
-                  size={14}
-                  iconColor="#2563eb"
-                />
                 <Text style={styles.forumText} numberOfLines={1}>
                   {post.forumName}
                 </Text>
@@ -215,6 +241,12 @@ const PostCard = ({
         <View style={styles.dateContainer}>
           <IconButton icon="calendar" size={14} iconColor="#6b7280" />
           <Text style={styles.dateText}>{formatDate(post.createdAt)}</Text>
+          {post.updatedAt && (
+            <>
+              <Text style={styles.dateSeparator}>•</Text>
+              <Text style={styles.updatedText}>Editado</Text>
+            </>
+          )}
         </View>
 
         {/* Contenido */}
@@ -348,7 +380,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   authorInfo: {
     flexDirection: "row",
@@ -359,7 +391,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 12,
   },
   avatarPlaceholder: {
     backgroundColor: "#4f46e5",
@@ -369,45 +401,43 @@ const styles = StyleSheet.create({
   authorDetails: {
     flex: 1,
   },
+  authorNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
   authorName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#1f2937",
-    marginBottom: 2,
-  },
-  specialtyBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#eef2ff",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    alignSelf: "flex-start",
   },
   specialtyText: {
-    fontSize: 10,
-    color: "#4f46e5",
+    fontSize: 12,
+    color: "#6b7280",
+    fontStyle: "italic",
     fontWeight: "500",
-    marginLeft: 2,
+  },
+  verifiedBadge: {
+    marginLeft: 6,
+    padding: 0,
   },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
+    marginLeft: 8,
   },
   forumBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#eff6ff",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
-    marginRight: 8,
+    marginRight: 4,
+    maxWidth: 120,
   },
   forumText: {
     fontSize: 11,
-    color: "#2563eb",
+    color: "#4b5563",
     fontWeight: "500",
-    marginLeft: 2,
   },
   menu: {
     marginTop: 40,
@@ -415,12 +445,22 @@ const styles = StyleSheet.create({
   dateContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   dateText: {
     fontSize: 12,
     color: "#6b7280",
     marginLeft: -8,
+  },
+  dateSeparator: {
+    fontSize: 12,
+    color: "#d1d5db",
+    marginHorizontal: 4,
+  },
+  updatedText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    fontStyle: "italic",
   },
   contentContainer: {
     marginBottom: 8,

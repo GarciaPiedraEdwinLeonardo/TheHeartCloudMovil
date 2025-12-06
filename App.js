@@ -49,8 +49,6 @@ function App() {
 
   return (
     <PaperProvider>
-      {" "}
-      {/* ← ENVUELVE TODO CON PaperProvider */}
       <AuthProvider>
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}>

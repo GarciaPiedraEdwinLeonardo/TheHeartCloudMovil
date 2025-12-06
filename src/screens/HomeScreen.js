@@ -7,15 +7,20 @@ import {
   RefreshControl,
   Image,
   TouchableOpacity,
+  Alert,
 } from "react-native";
-import { signOut } from "firebase/auth";
-import { auth } from "../config/firebase";
 import {
-  Card,
-  IconButton,
-  Avatar,
-  ActivityIndicator,
-} from "react-native-paper";
+  collection,
+  query,
+  orderBy,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { auth, db } from "../config/firebase";
+import { IconButton, Avatar, ActivityIndicator } from "react-native-paper";
+import PostCard from "../components/posts/PostCard";
 
 // Componente Logo
 const Logo = () => (
@@ -30,243 +35,192 @@ const Logo = () => (
 );
 
 const HomeScreen = ({ navigation }) => {
-  const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [userData, setUserData] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Estados para navegación
-  const [currentView, setCurrentView] = useState("main");
-  const [selectedForum, setSelectedForum] = useState(null);
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [selectedUserId, setSelectedUserId] = useState(null);
+  // Cargar datos del usuario y TODOS los posts
+  const loadAllData = async () => {
+    try {
+      setLoading(true);
+
+      // Cargar datos del usuario actual
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          setUserData({ id: currentUser.uid, ...userDoc.data() });
+        }
+      }
+
+      // Cargar TODOS los posts ordenados por fecha (más reciente primero)
+      const postsQuery = query(
+        collection(db, "posts"),
+        orderBy("createdAt", "desc")
+      );
+
+      const postsSnapshot = await getDocs(postsQuery);
+      const postsData = [];
+
+      for (const postDoc of postsSnapshot.docs) {
+        const post = {
+          id: postDoc.id,
+          ...postDoc.data(),
+        };
+
+        // Cargar datos del autor
+        if (post.authorId) {
+          try {
+            const authorDoc = await getDoc(doc(db, "users", post.authorId));
+            if (authorDoc.exists()) {
+              const authorData = authorDoc.data();
+              post.authorData = authorData;
+
+              // Obtener nombre del autor (usar email si name es null)
+              const authorName =
+                authorData.name?.name || authorData.email || "Usuario";
+              const authorLastName = authorData.name?.apellidopat || "";
+              post.authorName = `${authorName} ${authorLastName}`.trim();
+
+              post.authorPhoto = authorData.photoURL;
+              post.authorSpecialty = authorData.professionalInfo?.specialty;
+              post.authorVerified =
+                authorData.verificationStatus === "verified";
+              post.authorEmail = authorData.email; // Guardar email para PostCard
+            }
+          } catch (error) {
+            console.error("Error cargando autor:", error);
+          }
+        }
+
+        // Cargar datos del foro
+        if (post.forumId) {
+          try {
+            const forumDoc = await getDoc(doc(db, "forums", post.forumId));
+            if (forumDoc.exists()) {
+              const forumData = forumDoc.data();
+              post.forumData = { id: forumDoc.id, ...forumData };
+              post.forumName = forumData.name;
+            }
+          } catch (error) {
+            console.error("Error cargando foro:", error);
+          }
+        }
+
+        postsData.push(post);
+      }
+
+      setPosts(postsData);
+    } catch (error) {
+      console.error("Error cargando datos:", error);
+      Alert.alert(
+        "Error",
+        "No se pudieron cargar las publicaciones. Por favor, intenta de nuevo."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      setLoading(true);
-      setTimeout(() => {
-        setUserData({
-          displayName: "Dr. Usuario",
-          photoURL: "https://via.placeholder.com/40",
-          role: "doctor",
-          isVerified: true,
-        });
-        setLoading(false);
-      }, 1000);
-    };
-
-    fetchUserData();
+    loadAllData();
   }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadAllData().finally(() => setRefreshing(false));
+  };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      navigation.replace("Login");
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
+      Alert.alert("Error", "No se pudo cerrar sesión. Intenta de nuevo.");
     }
-  };
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
   };
 
   // Funciones de navegación
-  const navigateToForum = (forumData) => {
-    setSelectedForum(forumData);
-    setCurrentView("forum");
-  };
-
-  const navigateToPost = (postData) => {
-    setSelectedPost(postData);
-    setCurrentView("post");
-  };
-
   const navigateToProfile = (userId = null) => {
-    navigation.navigate("Profile", {
-      userId: userId, // Si es null, será el perfil propio
-    });
+    navigation.navigate("Profile", { userId });
   };
 
   const navigateToSearch = () => {
-    setCurrentView("search");
+    navigation.navigate("Search");
   };
 
-  const navigateToMain = () => {
-    setCurrentView("main");
-  };
-
-  // Componente de vista principal
-  const renderMainView = () => (
-    <ScrollView
-      style={styles.mainContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Título de sección */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Publicaciones Recientes</Text>
-      </View>
-
-      {/* Publicaciones recientes - Placeholder */}
-      {[1, 2, 3].map((item) => (
-        <Card key={item} style={styles.postCard}>
-          <Card.Content>
-            <TouchableOpacity
-              style={styles.postHeader}
-              onPress={() =>
-                navigateToPost({ id: item, title: `Publicación ${item}` })
-              }
-            >
-              <View style={styles.postUserInfo}>
-                <Avatar.Image
-                  size={40}
-                  source={{ uri: "https://via.placeholder.com/40" }}
-                />
-                <View style={styles.postUserDetails}>
-                  <Text style={styles.postAuthor}>Dr. Ejemplo {item}</Text>
-                  <Text style={styles.postTime}>Hace {item} horas</Text>
-                </View>
-              </View>
-              <IconButton icon="check-decagram" size={20} iconColor="#2a55ff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => navigateToPost({ id: item })}>
-              <Text style={styles.postTitle}>
-                Título de la publicación médica #{item}
-              </Text>
-              <Text style={styles.postContent} numberOfLines={3}>
-                Contenido de ejemplo para mostrar cómo se verían las
-                publicaciones en la aplicación móvil de TheHeartCloud...
-              </Text>
-
-              <View style={styles.tagsContainer}>
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>#cardiología</Text>
-                </View>
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>#casoclínico</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.postFooter}>
-              <View style={styles.postActions}>
-                <IconButton
-                  icon="heart-outline"
-                  size={20}
-                  onPress={() => console.log("Like")}
-                />
-                <Text style={styles.actionText}>24</Text>
-
-                <IconButton
-                  icon="comment-outline"
-                  size={20}
-                  onPress={() => navigateToPost({ id: item })}
-                />
-                <Text style={styles.actionText}>8</Text>
-              </View>
-
-              <TouchableOpacity onPress={() => navigateToForum({ id: item })}>
-                <View style={styles.forumBadge}>
-                  <Text style={styles.forumBadgeText}>Cardiología</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </Card.Content>
-        </Card>
-      ))}
-    </ScrollView>
-  );
-
-  const renderForumView = () => (
-    <View style={styles.fullScreenView}>
-      <View style={styles.viewHeader}>
-        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
-          <IconButton icon="arrow-left" size={24} />
-        </TouchableOpacity>
-        <Text style={styles.viewTitle}>
-          Foro: {selectedForum?.name || "Foro"}
-        </Text>
-        <View style={styles.viewHeaderPlaceholder} />
-      </View>
-      <View style={styles.viewContent}>
-        <Text style={styles.placeholderText}>
-          Aquí se mostrarán las publicaciones del foro
-        </Text>
-      </View>
-    </View>
-  );
-
-  const renderPostView = () => (
-    <View style={styles.fullScreenView}>
-      <View style={styles.viewHeader}>
-        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
-          <IconButton icon="arrow-left" size={24} />
-        </TouchableOpacity>
-        <Text style={styles.viewTitle}>Publicación</Text>
-        <View style={styles.viewHeaderPlaceholder} />
-      </View>
-      <View style={styles.viewContent}>
-        <Text style={styles.placeholderText}>
-          Aquí se mostrarán los detalles de la publicación
-        </Text>
-      </View>
-    </View>
-  );
-
-  const renderProfileView = () => (
-    <View style={styles.fullScreenView}>
-      <View style={styles.viewHeader}>
-        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
-          <IconButton icon="arrow-left" size={24} />
-        </TouchableOpacity>
-        <Text style={styles.viewTitle}>Perfil</Text>
-        <View style={styles.viewHeaderPlaceholder} />
-      </View>
-      <View style={styles.viewContent}>
-        <Text style={styles.placeholderText}>
-          Aquí se mostrará el perfil del usuario
-        </Text>
-      </View>
-    </View>
-  );
-
-  const renderSearchView = () => (
-    <View style={styles.fullScreenView}>
-      <View style={styles.viewHeader}>
-        <TouchableOpacity onPress={navigateToMain} style={styles.backButton}>
-          <IconButton icon="arrow-left" size={24} />
-        </TouchableOpacity>
-        <Text style={styles.viewTitle}>Búsqueda</Text>
-        <View style={styles.viewHeaderPlaceholder} />
-      </View>
-      <View style={styles.viewContent}>
-        <Text style={styles.placeholderText}>
-          Aquí se mostrarán los resultados de búsqueda
-        </Text>
-      </View>
-    </View>
-  );
-
-  const renderCurrentView = () => {
-    switch (currentView) {
-      case "forum":
-        return renderForumView();
-      case "post":
-        return renderPostView();
-      case "profile":
-        return renderProfileView();
-      case "search":
-        return renderSearchView();
-      default:
-        return renderMainView();
+  const navigateToForum = (forumData) => {
+    if (forumData) {
+      navigation.navigate("Forum", { forum: forumData });
+    } else {
+      Alert.alert("Información", "Este foro no está disponible");
     }
   };
 
-  // Render Sidebar
+  const navigateToPost = (postData) => {
+    navigation.navigate("Post", { post: postData });
+  };
+
+  // Handlers para refrescar datos después de acciones en PostCard
+  const handlePostUpdated = () => {
+    loadAllData();
+  };
+
+  const handlePostDeleted = () => {
+    loadAllData();
+  };
+
+  // Render loading
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2a55ff" />
+        <Text style={styles.loadingText}>Cargando publicaciones...</Text>
+      </View>
+    );
+  }
+
+  // Render empty state
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <IconButton icon="comment-outline" size={64} iconColor="#cbd5e1" />
+      <Text style={styles.emptyStateTitle}>No hay publicaciones</Text>
+      <Text style={styles.emptyStateText}>
+        Sé el primero en publicar contenido en la comunidad
+      </Text>
+      <TouchableOpacity
+        style={styles.createPostButton}
+        onPress={() => navigation.navigate("CreatePost")}
+      >
+        <Text style={styles.createPostButtonText}>
+          Crear primera publicación
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Render posts list
+  const renderPosts = () => (
+    <View style={styles.postsContainer}>
+      {posts.map((post) => (
+        <PostCard
+          key={post.id}
+          post={post}
+          onCommentClick={() => navigateToPost(post)}
+          onAuthorPress={() => navigateToProfile(post.authorId)}
+          onForumPress={() => navigateToForum(post.forumData)}
+          onViewPost={() => navigateToPost(post)}
+          onPostUpdated={handlePostUpdated}
+          onPostDeleted={handlePostDeleted}
+        />
+      ))}
+    </View>
+  );
+
+  // Render sidebar
   const renderSidebar = () => {
     if (!isSidebarOpen) return null;
 
@@ -294,10 +248,52 @@ const HomeScreen = ({ navigation }) => {
           </View>
 
           <ScrollView style={styles.sidebarContent}>
+            {/* Información del usuario */}
+            {userData && (
+              <TouchableOpacity
+                style={styles.userInfoSection}
+                onPress={() => {
+                  navigateToProfile();
+                  setIsSidebarOpen(false);
+                }}
+              >
+                {userData.photoURL ? (
+                  <Avatar.Image size={60} source={{ uri: userData.photoURL }} />
+                ) : (
+                  <Avatar.Text
+                    size={60}
+                    label={
+                      userData.name?.name?.charAt(0) ||
+                      userData.email?.charAt(0) ||
+                      "U"
+                    }
+                    style={styles.sidebarAvatar}
+                  />
+                )}
+                <View style={styles.userInfoText}>
+                  <Text style={styles.userName}>
+                    {userData.name?.name || userData.email || "Usuario"}
+                  </Text>
+                  <Text style={styles.userRole}>
+                    {userData.role === "doctor"
+                      ? "Médico Verificado"
+                      : "Usuario"}
+                  </Text>
+                  {userData.professionalInfo?.specialty && (
+                    <Text style={styles.userSpecialty}>
+                      {userData.professionalInfo.specialty}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.sidebarDivider} />
+
+            {/* Menú principal */}
             <TouchableOpacity
               style={styles.sidebarItem}
               onPress={() => {
-                navigateToMain();
                 setIsSidebarOpen(false);
               }}
             >
@@ -308,12 +304,12 @@ const HomeScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.sidebarItem}
               onPress={() => {
-                navigateToProfile();
+                navigation.navigate("CreatePost");
                 setIsSidebarOpen(false);
               }}
             >
-              <IconButton icon="account" size={20} />
-              <Text style={styles.sidebarItemText}>Mi Perfil</Text>
+              <IconButton icon="plus-circle" size={20} />
+              <Text style={styles.sidebarItemText}>Crear Publicación</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -327,37 +323,58 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.sidebarItemText}>Buscar</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={styles.sidebarItem}
+              onPress={() => {
+                navigation.navigate("MyPosts");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="file-document" size={20} />
+              <Text style={styles.sidebarItemText}>Mis Publicaciones</Text>
+            </TouchableOpacity>
+
             <View style={styles.sidebarDivider} />
 
-            <Text style={styles.sidebarSectionTitle}>Mis comunidades</Text>
+            <Text style={styles.sidebarSectionTitle}>Comunidades</Text>
 
-            {["Cardiología", "Neurología", "Pediatría", "Cirugía"].map(
-              (forum, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.sidebarItem}
-                  onPress={() => {
-                    navigateToForum({ name: forum });
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <IconButton icon="forum" size={20} />
-                  <Text style={styles.sidebarItemText}>{forum}</Text>
-                </TouchableOpacity>
-              )
-            )}
+            <TouchableOpacity
+              style={styles.sidebarItem}
+              onPress={() => {
+                navigation.navigate("Forums");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <IconButton icon="forum" size={20} />
+              <Text style={styles.sidebarItemText}>Ver todos los foros</Text>
+            </TouchableOpacity>
 
             <View style={styles.sidebarDivider} />
 
             <TouchableOpacity
               style={[styles.sidebarItem, styles.logoutItem]}
               onPress={() => {
-                handleLogout();
-                setIsSidebarOpen(false);
+                Alert.alert(
+                  "Cerrar Sesión",
+                  "¿Estás seguro de que quieres cerrar sesión?",
+                  [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                      text: "Cerrar Sesión",
+                      style: "destructive",
+                      onPress: () => {
+                        handleLogout();
+                        setIsSidebarOpen(false);
+                      },
+                    },
+                  ]
+                );
               }}
             >
-              <IconButton icon="logout" size={20} />
-              <Text style={styles.sidebarItemText}>Cerrar Sesión</Text>
+              <IconButton icon="logout" size={20} iconColor="#ef4444" />
+              <Text style={[styles.sidebarItemText, styles.logoutText]}>
+                Cerrar Sesión
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -372,15 +389,6 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2a55ff" />
-        <Text style={styles.loadingText}>Cargando...</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -389,38 +397,65 @@ const HomeScreen = ({ navigation }) => {
           <IconButton icon="menu" size={24} />
         </TouchableOpacity>
 
-        {/* Componente Logo */}
         <Logo />
 
-        {/* Espacio vacío para mantener la simetría */}
-        <View style={styles.headerPlaceholder} />
+        <TouchableOpacity onPress={() => navigateToProfile()}>
+          {userData?.photoURL ? (
+            <Avatar.Image size={40} source={{ uri: userData.photoURL }} />
+          ) : (
+            <Avatar.Text
+              size={40}
+              label={
+                userData?.name?.name?.charAt(0) ||
+                userData?.email?.charAt(0) ||
+                "U"
+              }
+              style={styles.userAvatar}
+            />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Contenido principal */}
-      {renderCurrentView()}
-
-      {/* Bottom Navigation - Solo en vista principal */}
-      {currentView === "main" && (
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.navItem} onPress={navigateToMain}>
-            <IconButton icon="home" size={24} iconColor="#2a55ff" />
-            <Text style={styles.navTextActive}>Inicio</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={navigateToSearch}>
-            <IconButton icon="magnify" size={24} iconColor="#64748b" />
-            <Text style={styles.navText}>Buscar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => navigateToProfile()}
-          >
-            <IconButton icon="account" size={24} iconColor="#64748b" />
-            <Text style={styles.navText}>Perfil</Text>
-          </TouchableOpacity>
+      <ScrollView
+        style={styles.mainContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Título de sección */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Publicaciones Recientes</Text>
+          <Text style={styles.sectionSubtitle}>
+            Todas las publicaciones de la comunidad médica
+          </Text>
         </View>
-      )}
+
+        {/* Lista de publicaciones */}
+        {posts.length === 0 ? renderEmptyState() : renderPosts()}
+      </ScrollView>
+
+      {/* Bottom Navigation - CAMBIADO: "Buscar" en vez de "Crear" */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.navItem}>
+          <IconButton icon="home" size={24} iconColor="#2a55ff" />
+          <Text style={styles.navTextActive}>Inicio</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={navigateToSearch}>
+          <IconButton icon="magnify" size={24} iconColor="#64748b" />
+          <Text style={styles.navText}>Buscar</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigateToProfile()}
+        >
+          <IconButton icon="account" size={24} iconColor="#64748b" />
+          <Text style={styles.navText}>Perfil</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Sidebar */}
       {renderSidebar()}
@@ -437,6 +472,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f8fafc",
   },
   loadingText: {
     marginTop: 10,
@@ -471,8 +507,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#2a55ff",
   },
-  headerPlaceholder: {
-    width: 40,
+  userAvatar: {
+    backgroundColor: "#2a55ff",
   },
   mainContent: {
     flex: 1,
@@ -486,92 +522,48 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#1e293b",
+    marginBottom: 4,
   },
-  postCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    backgroundColor: "white",
-    elevation: 2,
-  },
-  postHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  postUserInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  postUserDetails: {
-    marginLeft: 12,
-  },
-  postAuthor: {
+  sectionSubtitle: {
     fontSize: 14,
+    color: "#64748b",
+    marginBottom: 16,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
     fontWeight: "600",
     color: "#1e293b",
-  },
-  postTime: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  postTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e293b",
+    marginTop: 16,
     marginBottom: 8,
   },
-  postContent: {
-    fontSize: 14,
-    color: "#475569",
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  tagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 12,
-  },
-  tag: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  tagText: {
-    fontSize: 12,
-    color: "#475569",
-  },
-  postFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    paddingTop: 12,
-  },
-  postActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionText: {
+  emptyStateText: {
     fontSize: 14,
     color: "#64748b",
-    marginRight: 16,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 20,
   },
-  forumBadge: {
-    backgroundColor: "#f0f9ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+  createPostButton: {
+    backgroundColor: "#2a55ff",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 8,
   },
-  forumBadgeText: {
-    fontSize: 12,
-    color: "#2a55ff",
+  createPostButtonText: {
+    color: "#ffffff",
     fontWeight: "600",
+    fontSize: 16,
+  },
+  postsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 80,
   },
   bottomNav: {
     flexDirection: "row",
@@ -587,6 +579,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   navItem: {
     alignItems: "center",
@@ -614,7 +611,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   sidebar: {
-    width: 280,
+    width: 300,
     backgroundColor: "white",
     elevation: 10,
     shadowColor: "#000",
@@ -666,6 +663,37 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 20,
   },
+  userInfoSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "#f8fafc",
+    marginBottom: 16,
+  },
+  sidebarAvatar: {
+    backgroundColor: "#2a55ff",
+  },
+  userInfoText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 2,
+  },
+  userRole: {
+    fontSize: 12,
+    color: "#64748b",
+    marginBottom: 2,
+  },
+  userSpecialty: {
+    fontSize: 14,
+    color: "#2a55ff",
+    fontWeight: "500",
+  },
   sidebarItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -701,44 +729,8 @@ const styles = StyleSheet.create({
   logoutItem: {
     marginTop: 20,
   },
-  // Full screen views
-  fullScreenView: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  viewHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  backButton: {
-    marginRight: 12,
-  },
-  viewTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1e293b",
-    flex: 1,
-  },
-  viewHeaderPlaceholder: {
-    width: 40,
-  },
-  viewContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: "#64748b",
-    textAlign: "center",
+  logoutText: {
+    color: "#ef4444",
   },
 });
 
