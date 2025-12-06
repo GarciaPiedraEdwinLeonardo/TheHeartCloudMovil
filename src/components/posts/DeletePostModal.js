@@ -12,16 +12,29 @@ import { usePostActions } from "../../hooks/usePostActions";
 
 const DeletePostModal = ({ visible, onClose, post, onPostDeleted }) => {
   const [loading, setLoading] = useState(false);
+  const [deletionProgress, setDeletionProgress] = useState("");
   const { deletePost } = usePostActions();
 
   const handleDelete = async () => {
     try {
       setLoading(true);
+      setDeletionProgress("Iniciando eliminación...");
 
       const result = await deletePost(post.id);
 
       if (result.success) {
-        Alert.alert("Éxito", "La publicación se eliminó correctamente", [
+        // Mostrar estadísticas de lo que se eliminó
+        let successMessage = "La publicación se eliminó correctamente";
+
+        if (result.deletedComments > 0) {
+          successMessage += `\n• ${result.deletedComments} comentario(s) eliminado(s)`;
+        }
+
+        if (result.updatedAuthors > 0) {
+          successMessage += `\n• Estadísticas de ${result.updatedAuthors} usuario(s) actualizadas`;
+        }
+
+        Alert.alert("Éxito", successMessage, [
           {
             text: "OK",
             onPress: () => {
@@ -43,12 +56,35 @@ const DeletePostModal = ({ visible, onClose, post, onPostDeleted }) => {
       );
     } finally {
       setLoading(false);
+      setDeletionProgress("");
     }
   };
 
   const handleClose = () => {
+    if (loading) {
+      Alert.alert(
+        "Eliminando publicación",
+        "Espera a que termine de eliminar antes de cerrar",
+        [{ text: "OK" }]
+      );
+      return;
+    }
     onClose();
   };
+
+  // Calcular estadísticas para mostrar
+  const getPostStats = () => {
+    if (!post) return { images: 0, comments: 0, likes: 0, dislikes: 0 };
+
+    return {
+      images: post.images?.length || 0,
+      comments: post.stats?.commentCount || 0,
+      likes: post.likes?.length || 0,
+      dislikes: post.dislikes?.length || 0,
+    };
+  };
+
+  const stats = getPostStats();
 
   return (
     <Modal
@@ -74,14 +110,52 @@ const DeletePostModal = ({ visible, onClose, post, onPostDeleted }) => {
 
           <Text style={styles.message}>
             Esta acción no se puede deshacer. La publicación "{post?.title}" se
-            eliminará permanentemente.
+            eliminará permanentemente junto con todo su contenido asociado.
           </Text>
 
-          {post?.images && post.images.length > 0 && (
-            <Text style={styles.warningText}>
-              ⚠️ También se eliminarán {post.images.length} imagen(es)
-              adjunta(s)
+          {/* Estadísticas de lo que se eliminará */}
+          <View style={styles.statsContainer}>
+            {stats.images > 0 && (
+              <View style={styles.statItem}>
+                <IconButton icon="image" size={16} iconColor="#6b7280" />
+                <Text style={styles.statText}>
+                  {stats.images} imagen(es) adjunta(s)
+                </Text>
+              </View>
+            )}
+
+            {stats.comments > 0 && (
+              <View style={styles.statItem}>
+                <IconButton icon="comment" size={16} iconColor="#6b7280" />
+                <Text style={styles.statText}>
+                  {stats.comments} comentario(s)
+                </Text>
+              </View>
+            )}
+
+            {(stats.likes > 0 || stats.dislikes > 0) && (
+              <View style={styles.statItem}>
+                <IconButton icon="thumb-up" size={16} iconColor="#6b7280" />
+                <Text style={styles.statText}>
+                  {stats.likes} like(s) y {stats.dislikes} dislike(s)
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.statsNote}>
+              • También se actualizarán las estadísticas del foro
             </Text>
+            <Text style={styles.statsNote}>
+              • Se ajustará el contador de posts del autor
+            </Text>
+          </View>
+
+          {/* Progreso durante la eliminación */}
+          {loading && deletionProgress && (
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="small" color="#ef4444" />
+              <Text style={styles.progressText}>{deletionProgress}</Text>
+            </View>
           )}
 
           {/* Botones */}
@@ -92,6 +166,7 @@ const DeletePostModal = ({ visible, onClose, post, onPostDeleted }) => {
               style={styles.cancelButton}
               disabled={loading}
               contentStyle={styles.buttonContent}
+              labelStyle={styles.cancelButtonText}
             >
               Cancelar
             </Button>
@@ -103,17 +178,16 @@ const DeletePostModal = ({ visible, onClose, post, onPostDeleted }) => {
               disabled={loading}
               contentStyle={styles.buttonContent}
               loading={loading}
+              labelStyle={styles.deleteButtonText}
             >
-              {loading ? "Eliminando..." : "Eliminar"}
+              {loading ? "Eliminando..." : "Eliminar Publicación"}
             </Button>
           </View>
 
-          {loading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#ef4444" />
-              <Text style={styles.loadingText}>Eliminando publicación...</Text>
-            </View>
-          )}
+          {/* Información adicional */}
+          <Text style={styles.note}>
+            Solo puedes eliminar publicaciones que hayas creado tú.
+          </Text>
         </View>
       </View>
     </Modal>
@@ -134,10 +208,15 @@ const styles = StyleSheet.create({
     padding: 24,
     width: "100%",
     maxWidth: 400,
-    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   iconContainer: {
     marginBottom: 16,
+    alignItems: "center",
   },
   warningIcon: {
     margin: 0,
@@ -154,18 +233,45 @@ const styles = StyleSheet.create({
     color: "#4b5563",
     textAlign: "center",
     lineHeight: 22,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  warningText: {
+  statsContainer: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    width: "100%",
+  },
+  statItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  statText: {
+    fontSize: 14,
+    color: "#4b5563",
+    marginLeft: 8,
+  },
+  statsNote: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+  progressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fef2f2",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    width: "100%",
+  },
+  progressText: {
     fontSize: 13,
     color: "#dc2626",
-    textAlign: "center",
-    marginBottom: 24,
-    backgroundColor: "#fef2f2",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    width: "100%",
+    marginLeft: 8,
   },
   buttonsContainer: {
     flexDirection: "row",
@@ -175,29 +281,35 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     borderColor: "#d1d5db",
+    borderWidth: 1.5,
+    borderRadius: 10,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
   },
   deleteButton: {
     flex: 1,
     backgroundColor: "#ef4444",
+    borderRadius: 10,
+    borderWidth: 0,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ffffff",
   },
   buttonContent: {
     height: 48,
   },
-  loadingOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#6b7280",
+  note: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 16,
+    fontStyle: "italic",
+    lineHeight: 16,
   },
 });
 
