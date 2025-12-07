@@ -46,7 +46,7 @@ const ProfileScreen = ({ route, navigation }) => {
   };
 
   const handleCommunityPress = (community) => {
-    navigation.navigate("Forum", { forumId: community.id });
+    navigation.navigate("Forum", { forum: community, forumId: community.id });
   };
 
   const handlePostPress = (post) => {

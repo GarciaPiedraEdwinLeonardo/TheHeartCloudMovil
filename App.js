@@ -8,6 +8,7 @@ import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
 import VerificationSentScreen from "./src/screens/VerificationSentScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
+import ForumScreen from "./src/screens/ForumScreen";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./src/config/firebase";
 import { View, Text, ActivityIndicator } from "react-native";
@@ -56,6 +57,13 @@ function App() {
               // Usuario autenticado - Pantallas principales
               <>
                 <Stack.Screen name="Home" component={HomeScreen} />
+                <Stack.Screen
+                  name="Forum"
+                  component={ForumScreen}
+                  options={{
+                    animation: "slide_from_right",
+                  }}
+                />
                 <Stack.Screen
                   name="Profile"
                   component={ProfileScreen}

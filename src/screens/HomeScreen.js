@@ -186,7 +186,7 @@ const HomeScreen = ({ navigation }) => {
 
   const navigateToForum = (forumData) => {
     if (forumData) {
-      navigation.navigate("Forum", { forum: forumData });
+      navigation.navigate("Forum", { forum: forumData, forumId: forumData.id });
     } else {
       Alert.alert("Información", "Este foro no está disponible");
     }
