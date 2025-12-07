@@ -39,6 +39,7 @@ const HomeScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userData, setUserData] = useState(null);
+  const [userForums, setUserForums] = useState([]); // Foros del usuario
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Cargar datos del usuario y TODOS los posts
@@ -51,7 +52,13 @@ const HomeScreen = ({ navigation }) => {
       if (currentUser) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) {
-          setUserData({ id: currentUser.uid, ...userDoc.data() });
+          const userData = { id: currentUser.uid, ...userDoc.data() };
+          setUserData(userData);
+
+          // Cargar foros del usuario
+          if (userData.joinedForums && userData.joinedForums.length > 0) {
+            await loadUserForums(userData.joinedForums);
+          }
         }
       }
 
@@ -124,6 +131,31 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Cargar foros del usuario
+  const loadUserForums = async (forumIds) => {
+    try {
+      const forumsData = [];
+
+      for (const forumId of forumIds) {
+        try {
+          const forumDoc = await getDoc(doc(db, "forums", forumId));
+          if (forumDoc.exists()) {
+            forumsData.push({
+              id: forumDoc.id,
+              ...forumDoc.data(),
+            });
+          }
+        } catch (error) {
+          console.error(`Error cargando foro ${forumId}:`, error);
+        }
+      }
+
+      setUserForums(forumsData);
+    } catch (error) {
+      console.error("Error cargando foros del usuario:", error);
+    }
+  };
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -191,14 +223,6 @@ const HomeScreen = ({ navigation }) => {
       <Text style={styles.emptyStateText}>
         Sé el primero en publicar contenido en la comunidad
       </Text>
-      <TouchableOpacity
-        style={styles.createPostButton}
-        onPress={() => navigation.navigate("CreatePost")}
-      >
-        <Text style={styles.createPostButtonText}>
-          Crear primera publicación
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 
@@ -290,7 +314,7 @@ const HomeScreen = ({ navigation }) => {
 
             <View style={styles.sidebarDivider} />
 
-            {/* Menú principal */}
+            {/* Menú principal - SOLO INICIO Y BUSCAR */}
             <TouchableOpacity
               style={styles.sidebarItem}
               onPress={() => {
@@ -304,17 +328,6 @@ const HomeScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.sidebarItem}
               onPress={() => {
-                navigation.navigate("CreatePost");
-                setIsSidebarOpen(false);
-              }}
-            >
-              <IconButton icon="plus-circle" size={20} />
-              <Text style={styles.sidebarItemText}>Crear Publicación</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sidebarItem}
-              onPress={() => {
                 navigateToSearch();
                 setIsSidebarOpen(false);
               }}
@@ -323,31 +336,62 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.sidebarItemText}>Buscar</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.sidebarItem}
-              onPress={() => {
-                navigation.navigate("MyPosts");
-                setIsSidebarOpen(false);
-              }}
-            >
-              <IconButton icon="file-document" size={20} />
-              <Text style={styles.sidebarItemText}>Mis Publicaciones</Text>
-            </TouchableOpacity>
-
             <View style={styles.sidebarDivider} />
 
-            <Text style={styles.sidebarSectionTitle}>Comunidades</Text>
+            {/* MIS COMUNIDADES - SOLO ESTO */}
+            <Text style={styles.sidebarSectionTitle}>Mis comunidades</Text>
 
-            <TouchableOpacity
-              style={styles.sidebarItem}
-              onPress={() => {
-                navigation.navigate("Forums");
-                setIsSidebarOpen(false);
-              }}
-            >
-              <IconButton icon="forum" size={20} />
-              <Text style={styles.sidebarItemText}>Ver todos los foros</Text>
-            </TouchableOpacity>
+            {userForums.length > 0 ? (
+              userForums.map((forum) => (
+                <TouchableOpacity
+                  key={forum.id}
+                  style={styles.forumItem}
+                  onPress={() => {
+                    navigateToForum(forum);
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <View style={styles.forumItemContent}>
+                    <Text style={styles.forumItemName} numberOfLines={1}>
+                      {forum.name}
+                    </Text>
+                    {forum.description && (
+                      <Text
+                        style={styles.forumItemDescription}
+                        numberOfLines={1}
+                      >
+                        {forum.description}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.forumMemberCount}>
+                    {forum.memberCount || 0} miembros
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.noForumsContainer}>
+                <IconButton
+                  icon="forum-outline"
+                  size={24}
+                  iconColor="#cbd5e1"
+                />
+                <Text style={styles.noForumsText}>
+                  No has unido a comunidades
+                </Text>
+                <TouchableOpacity
+                  style={styles.joinForumsButton}
+                  onPress={() => {
+                    navigation.navigate("Forums");
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <Text style={styles.joinForumsButtonText}>
+                    Explorar comunidades
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.sidebarDivider} />
 
@@ -436,7 +480,7 @@ const HomeScreen = ({ navigation }) => {
         {posts.length === 0 ? renderEmptyState() : renderPosts()}
       </ScrollView>
 
-      {/* Bottom Navigation - CAMBIADO: "Buscar" en vez de "Crear" */}
+      {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
         <TouchableOpacity style={styles.navItem}>
           <IconButton icon="home" size={24} iconColor="#2a55ff" />
@@ -547,19 +591,6 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
-    marginBottom: 20,
-  },
-  createPostButton: {
-    backgroundColor: "#2a55ff",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginTop: 8,
-  },
-  createPostButtonText: {
-    color: "#ffffff",
-    fontWeight: "600",
-    fontSize: 16,
   },
   postsContainer: {
     paddingHorizontal: 16,
@@ -725,6 +756,55 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 12,
     marginTop: 8,
+  },
+  // Estilos para foros
+  forumItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  forumItemContent: {
+    marginBottom: 4,
+  },
+  forumItemName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginBottom: 2,
+  },
+  forumItemDescription: {
+    fontSize: 12,
+    color: "#64748b",
+    fontStyle: "italic",
+  },
+  forumMemberCount: {
+    fontSize: 11,
+    color: "#94a3b8",
+    fontWeight: "500",
+  },
+  noForumsContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  noForumsText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  joinForumsButton: {
+    backgroundColor: "#2a55ff",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  joinForumsButtonText: {
+    color: "#ffffff",
+    fontWeight: "600",
+    fontSize: 14,
   },
   logoutItem: {
     marginTop: 20,
