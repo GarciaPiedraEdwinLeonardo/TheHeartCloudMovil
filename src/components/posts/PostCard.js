@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   ScrollView,
   Modal,
   Alert,
+  TouchableWithoutFeedback,
+  Dimensions,
 } from "react-native";
-import { IconButton, Menu, Divider } from "react-native-paper";
+import { IconButton } from "react-native-paper";
 import { auth } from "../../config/firebase";
 import PostImages from "./PostImages";
 import EditPostModal from "./EditPostModal";
@@ -27,20 +29,22 @@ const PostCard = ({
   onPostDeleted,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showCommentsModal, setShowCommentsModal] = useState(false); // NUEVO ESTADO
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [userReaction, setUserReaction] = useState(null);
   const [likeCount, setLikeCount] = useState(0);
   const [dislikeCount, setDislikeCount] = useState(0);
   const [commentCount, setCommentCount] = useState(
     post.stats?.commentCount || 0
-  ); // NUEVO ESTADO
+  );
+  const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
 
   const currentUser = auth.currentUser;
   const isAuthor = currentUser && currentUser.uid === post.authorId;
   const { reactToPost, loading: reactionLoading } = usePostActions();
+  const menuButtonRef = useRef(null);
 
   useEffect(() => {
     // Inicializar contadores y reacción del usuario
@@ -49,7 +53,7 @@ const PostCard = ({
 
     setLikeCount(likes.length);
     setDislikeCount(dislikes.length);
-    setCommentCount(post.stats?.commentCount || 0); // Inicializar contador de comentarios
+    setCommentCount(post.stats?.commentCount || 0);
 
     if (currentUser) {
       const userId = currentUser.uid;
@@ -148,45 +152,115 @@ const PostCard = ({
     }
   };
 
-  // NUEVA FUNCIÓN: Manejar clic en botón de comentarios
+  // Manejar clic en botón de comentarios
   const handleCommentClick = () => {
-    // Siempre abrir el modal de comentarios
     setShowCommentsModal(true);
-
-    // Si hay un callback externo, podemos llamarlo también si es necesario
-    // pero NO para navegar
     if (onCommentClick && typeof onCommentClick === "function") {
-      // Podemos pasar los datos del post sin navegar
       onCommentClick(post);
     }
   };
 
-  // NUEVA FUNCIÓN: Manejar cuando se agrega un comentario
-  const handleCommentAdded = () => {
-    // Actualizar contador local
-    setCommentCount((prev) => prev + 1);
+  // Manejar clic en el botón de menú (popover) - SOLUCIÓN CORREGIDA
+  const handleMenuPress = () => {
+    // Si ya está abierto, cerrarlo
+    if (showPopover) {
+      setShowPopover(false);
+      return;
+    }
 
-    // Notificar al componente padre si es necesario
-    if (onPostUpdated) {
-      // Podríamos querer refrescar los datos del post
-      onPostUpdated();
+    // Si no está abierto, calcular posición y abrirlo
+    if (menuButtonRef.current) {
+      menuButtonRef.current.measureInWindow((x, y, width, height) => {
+        // Calcular posición para el popover
+        const screenWidth = Dimensions.get("window").width || 375;
+        const popoverWidth = 160;
+
+        // Para PostCard, el menú está a la derecha, así que ajustamos diferente
+        // Queremos que aparezca a la izquierda del botón
+        let popoverX = x - popoverWidth + width - 10;
+
+        // Ajustar si se sale por la izquierda
+        if (popoverX < 10) {
+          popoverX = 10;
+        }
+
+        // Posición Y (debajo del botón)
+        const popoverY = y + height + 5;
+
+        console.log("Posición calculada:", { x: popoverX, y: popoverY });
+
+        setPopoverPosition({ x: popoverX, y: popoverY });
+        setShowPopover(true);
+      });
     }
   };
 
-  // NUEVA FUNCIÓN: Manejar cuando se elimina un comentario
-  const handleCommentDeleted = (commentId, deletionType) => {
-    // Actualizar contador local
-    setCommentCount((prev) => Math.max(0, prev - 1));
-
-    // Podemos mostrar un mensaje si fue eliminación de moderador
-    if (deletionType === "moderator") {
-      Alert.alert(
-        "Comentario eliminado",
-        "Un moderador ha eliminado este comentario",
-        [{ text: "OK" }]
-      );
+  // Cerrar popover cuando se selecciona una opción
+  const handleOptionSelect = (action) => {
+    setShowPopover(false);
+    if (action === "edit") {
+      setShowEditModal(true);
+    } else if (action === "delete") {
+      setShowDeleteModal(true);
     }
   };
+
+  // Renderizar popover/menú personalizado para el autor
+  const renderPopover = () => (
+    <Modal
+      visible={showPopover}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowPopover(false)}
+    >
+      <TouchableWithoutFeedback onPress={() => setShowPopover(false)}>
+        <View style={styles.popoverOverlay}>
+          <View
+            style={[
+              styles.popoverContainer,
+              {
+                position: "absolute",
+                top: popoverPosition.y,
+                left: popoverPosition.x,
+              },
+            ]}
+          >
+            {/* Flecha indicadora (ARRIBA del contenido) */}
+            <View style={styles.popoverArrow} />
+
+            {/* Contenido del popover */}
+            <View style={styles.popoverContent}>
+              <TouchableOpacity
+                style={styles.popoverItem}
+                onPress={() => handleOptionSelect("edit")}
+              >
+                <View style={styles.popoverItemIcon}>
+                  <IconButton icon="pencil" size={18} iconColor="#4b5563" />
+                </View>
+                <Text style={styles.popoverItemText}>Editar</Text>
+              </TouchableOpacity>
+
+              <View style={styles.popoverDivider} />
+
+              <TouchableOpacity
+                style={[styles.popoverItem, styles.popoverDeleteItem]}
+                onPress={() => handleOptionSelect("delete")}
+              >
+                <View style={styles.popoverItemIcon}>
+                  <IconButton icon="delete" size={18} iconColor="#ef4444" />
+                </View>
+                <Text
+                  style={[styles.popoverItemText, styles.popoverDeleteText]}
+                >
+                  Eliminar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
 
   const authorName = getAuthorName();
 
@@ -246,40 +320,24 @@ const PostCard = ({
               </TouchableOpacity>
             )}
 
-            {/* Menú solo para autor */}
+            {/* Menú solo para autor - CON POPOVER PERSONALIZADO */}
             {isAuthor && (
-              <Menu
-                visible={showMenu}
-                onDismiss={() => setShowMenu(false)}
-                anchor={
+              <View style={styles.menuContainer}>
+                <TouchableOpacity
+                  ref={menuButtonRef}
+                  onPress={handleMenuPress}
+                  style={styles.menuButton}
+                >
                   <IconButton
                     icon="dots-vertical"
                     size={20}
-                    onPress={() => setShowMenu(true)}
                     iconColor="#6b7280"
                   />
-                }
-                style={styles.menu}
-              >
-                <Menu.Item
-                  leadingIcon="pencil"
-                  onPress={() => {
-                    setShowEditModal(true);
-                    setShowMenu(false);
-                  }}
-                  title="Editar"
-                />
-                <Divider />
-                <Menu.Item
-                  leadingIcon="delete"
-                  onPress={() => {
-                    setShowDeleteModal(true);
-                    setShowMenu(false);
-                  }}
-                  title="Eliminar"
-                  titleStyle={{ color: "#ef4444" }}
-                />
-              </Menu>
+                </TouchableOpacity>
+
+                {/* Renderizar popover si está activo */}
+                {renderPopover()}
+              </View>
             )}
           </View>
         </View>
@@ -373,10 +431,9 @@ const PostCard = ({
                   size={20}
                   iconColor={userReaction === "dislike" ? "#3b82f6" : "#6b7280"}
                 />
-                {/* Sin contador para dislike */}
               </TouchableOpacity>
 
-              {/* Comment button - MODIFICADO */}
+              {/* Comment button */}
               <TouchableOpacity
                 style={styles.commentButton}
                 onPress={handleCommentClick}
@@ -406,13 +463,12 @@ const PostCard = ({
         onPostDeleted={onPostDeleted}
       />
 
-      {/* NUEVO MODAL: Comentarios */}
+      {/* Modal de Comentarios */}
       <CommentsModal
         visible={showCommentsModal}
         onClose={() => setShowCommentsModal(false)}
         post={post}
         onCommentDeleted={(commentId, deletionType) => {
-          // Solo actualizar contador si es necesario
           if (deletionType === "user" || deletionType === "moderator") {
             setCommentCount((prev) => Math.max(0, prev - 1));
           }
@@ -497,8 +553,12 @@ const styles = StyleSheet.create({
     color: "#4b5563",
     fontWeight: "500",
   },
-  menu: {
-    marginTop: 40,
+  menuContainer: {
+    position: "relative",
+    zIndex: 1000,
+  },
+  menuButton: {
+    padding: 4,
   },
   dateContainer: {
     flexDirection: "row",
@@ -596,6 +656,71 @@ const styles = StyleSheet.create({
     color: "#0ea5e9",
     marginLeft: 4,
     fontWeight: "600",
+  },
+
+  // Estilos para el Popover (MEJORADOS)
+  popoverOverlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  popoverContainer: {
+    zIndex: 2000,
+  },
+  popoverArrow: {
+    position: "absolute",
+    top: 0,
+    right: 15,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "#ffffff",
+    zIndex: 2001,
+  },
+  popoverContent: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    paddingVertical: 6,
+    minWidth: 160,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    marginTop: 8, // Para que la flecha no tape el contenido
+    zIndex: 2000,
+  },
+  popoverItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  popoverItemIcon: {
+    width: 32,
+    alignItems: "center",
+  },
+  popoverItemText: {
+    fontSize: 15,
+    color: "#374151",
+    marginLeft: 8,
+    fontWeight: "500",
+    flex: 1,
+  },
+  popoverDivider: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginHorizontal: 12,
+  },
+  popoverDeleteItem: {
+    backgroundColor: "#fef2f2",
+  },
+  popoverDeleteText: {
+    color: "#dc2626",
   },
 });
 
