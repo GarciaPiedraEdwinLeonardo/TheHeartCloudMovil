@@ -411,8 +411,12 @@ const PostCard = ({
         visible={showCommentsModal}
         onClose={() => setShowCommentsModal(false)}
         post={post}
-        onCommentAdded={handleCommentAdded}
-        onCommentDeleted={handleCommentDeleted}
+        onCommentDeleted={(commentId, deletionType) => {
+          // Solo actualizar contador si es necesario
+          if (deletionType === "user" || deletionType === "moderator") {
+            setCommentCount((prev) => Math.max(0, prev - 1));
+          }
+        }}
       />
     </>
   );

@@ -1,34 +1,26 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Animated,
 } from "react-native";
 import { IconButton } from "react-native-paper";
 import CommentCard from "./CommentCard";
-import { useUserPermissions } from "../../hooks/useUserPermissions";
 
 const CommentList = ({
   comments,
   postId,
-  userData,
   onReply,
-  onCommentCreated,
   onCommentDeleted,
   scrollViewRef,
 }) => {
   const [expandedThreads, setExpandedThreads] = useState(new Set());
   const [showAllReplies, setShowAllReplies] = useState(new Set());
-  const [loadingComments, setLoadingComments] = useState({});
-  const { checkCommentPermissions } = useUserPermissions();
 
   // Organizar comentarios en estructura jerárquica
-  const organizeComments = (comments) => {
+  const organizedComments = useMemo(() => {
     const commentMap = new Map();
     const rootComments = [];
 
@@ -59,9 +51,7 @@ const CommentList = ({
     });
 
     return rootComments;
-  };
-
-  const organizedComments = organizeComments(comments);
+  }, [comments]);
 
   // Toggle para expandir/colapsar hilos
   const toggleThread = (commentId) => {
@@ -69,7 +59,6 @@ const CommentList = ({
       const newSet = new Set(prev);
       if (newSet.has(commentId)) {
         newSet.delete(commentId);
-        // Colapsar todos los hilos hijos
         collapseAllChildThreads(commentId, newSet);
       } else {
         newSet.add(commentId);
@@ -80,8 +69,8 @@ const CommentList = ({
 
   // Función recursiva para colapsar hilos hijos
   const collapseAllChildThreads = (commentId, set) => {
-    const findComment = (comments, targetId) => {
-      for (const comment of comments) {
+    const findComment = (commentsList, targetId) => {
+      for (const comment of commentsList) {
         if (comment.id === targetId) return comment;
         if (comment.replies.length > 0) {
           const found = findComment(comment.replies, targetId);
@@ -123,35 +112,21 @@ const CommentList = ({
     const isThreadExpanded = expandedThreads.has(comment.id);
     const showAll = showAllReplies.has(comment.id);
 
-    // Solo renderizar si el padre está expandido (para hilos anidados)
+    // Solo renderizar si el padre está expandido
     if (depth > 0 && !parentExpanded) {
       return null;
     }
 
-    // Calcular margen izquierdo basado en la profundidad (máximo 4 niveles)
+    // Calcular margen izquierdo
     const maxDepth = 4;
     const effectiveDepth = Math.min(depth, maxDepth);
-    const marginLeft = effectiveDepth * 16; // 16px por nivel
+    const marginLeft = effectiveDepth * 16;
 
     // Para respuestas anidadas, mostrar máximo 2 inicialmente
     const visibleReplies = showAll
       ? comment.replies
       : comment.replies.slice(0, 2);
     const hasHiddenReplies = comment.replies.length > 2 && !showAll;
-
-    // Función para manejar respuesta a un comentario
-    const handleReply = () => {
-      if (onReply) {
-        onReply(comment);
-      }
-    };
-
-    // Función para manejar eliminación de comentario
-    const handleCommentDeleted = (deletionType) => {
-      if (onCommentDeleted) {
-        onCommentDeleted(comment.id, deletionType);
-      }
-    };
 
     return (
       <View key={comment.id} style={[styles.commentContainer, { marginLeft }]}>
@@ -162,14 +137,12 @@ const CommentList = ({
         <CommentCard
           comment={comment}
           postId={postId}
-          userData={userData}
-          onReply={handleReply}
-          onCommentDeleted={handleCommentDeleted}
-          onCommentCreated={onCommentCreated}
+          onReply={onReply}
+          onCommentDeleted={onCommentDeleted}
           isReply={depth > 0}
         />
 
-        {/* Controles de hilo - mostrar para cualquier comentario con respuestas */}
+        {/* Controles de hilo */}
         {hasReplies && (
           <View style={styles.threadControls}>
             <TouchableOpacity
@@ -188,30 +161,17 @@ const CommentList = ({
                 </Text>
               </View>
             </TouchableOpacity>
-
-            {/* Indicador visual de que es un hilo anidado */}
-            {depth > 0 && (
-              <View style={styles.nestedIndicator}>
-                <IconButton
-                  icon="reply"
-                  size={12}
-                  iconColor="#9ca3af"
-                  style={styles.replyIcon}
-                />
-                <Text style={styles.nestedText}>Hilo anidado</Text>
-              </View>
-            )}
           </View>
         )}
 
-        {/* Renderizar respuestas VISIBLES si el hilo está expandido */}
+        {/* Renderizar respuestas si el hilo está expandido */}
         {hasReplies && isThreadExpanded && (
           <View style={styles.repliesContainer}>
             {visibleReplies.map((reply) =>
               renderCommentWithReplies(reply, depth + 1, isThreadExpanded)
             )}
 
-            {/* Botón para mostrar más respuestas si hay más de 2 */}
+            {/* Botón para mostrar más respuestas */}
             {hasHiddenReplies && (
               <View style={styles.moreRepliesContainer}>
                 <TouchableOpacity
@@ -221,7 +181,7 @@ const CommentList = ({
                   <IconButton
                     icon="chevron-down"
                     size={16}
-                    iconColor="#3b82f6"
+                    iconColor="#3b7280"
                   />
                   <Text style={styles.showMoreText}>
                     Ver {comment.replies.length - 2} respuestas más
@@ -230,7 +190,7 @@ const CommentList = ({
               </View>
             )}
 
-            {/* Botón para mostrar menos si estamos mostrando todas */}
+            {/* Botón para mostrar menos */}
             {showAll && comment.replies.length > 2 && (
               <View style={styles.moreRepliesContainer}>
                 <TouchableOpacity
@@ -248,7 +208,7 @@ const CommentList = ({
     );
   };
 
-  // Estado de carga inicial
+  // Estado vacío
   if (!comments || comments.length === 0) {
     return (
       <View style={styles.emptyState}>
@@ -289,7 +249,7 @@ const CommentList = ({
           )}
         </View>
 
-        {/* Espacio al final para mejor scroll */}
+        {/* Espacio al final */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </View>
@@ -362,9 +322,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#e5e7eb",
   },
   threadControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     marginTop: 8,
     marginLeft: 8,
   },
@@ -385,27 +342,6 @@ const styles = StyleSheet.create({
     color: "#3b82f6",
     fontWeight: "500",
     marginLeft: 4,
-  },
-  nestedIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  replyIcon: {
-    margin: 0,
-    padding: 0,
-    transform: [{ rotate: "180deg" }],
-  },
-  nestedText: {
-    fontSize: 11,
-    color: "#9ca3af",
-    fontWeight: "500",
-    marginLeft: 2,
   },
   repliesContainer: {
     marginTop: 8,

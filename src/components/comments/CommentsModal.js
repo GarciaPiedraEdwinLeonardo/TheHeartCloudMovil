@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -13,37 +12,32 @@ import {
   Alert,
   Dimensions,
   Animated,
-  Image,
   Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { IconButton, ActivityIndicator } from "react-native-paper";
 import { auth } from "../../config/firebase";
 import CommentList from "./CommentList";
-import CreateCommentModal from "./CreateCommentModal";
 import { useComments } from "../../hooks/useComments";
 import { useUserPermissions } from "../../hooks/useUserPermissions";
+import { useCommentActions } from "../../hooks/useCommentActions";
 
 const { height, width } = Dimensions.get("window");
 
-const CommentsModal = ({
-  visible,
-  onClose,
-  post,
-  onCommentAdded,
-  onCommentDeleted,
-}) => {
-  const [showCreateCommentModal, setShowCreateCommentModal] = useState(false);
+const CommentsModal = ({ visible, onClose, post, onCommentDeleted }) => {
   const [replyToComment, setReplyToComment] = useState(null);
   const [commentInput, setCommentInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const scrollViewRef = useRef(null);
+  const inputRef = useRef(null);
+  const modalContentRef = useRef(null);
   const modalHeight = useRef(new Animated.Value(0)).current;
 
   const currentUser = auth.currentUser;
   const { comments, loading, error } = useComments(post?.id);
-  const { permissions, userData, checkCommentPermissions } =
-    useUserPermissions();
+  const { permissions } = useUserPermissions();
+  const { createComment } = useCommentActions();
 
   // Animación de entrada del modal
   useEffect(() => {
@@ -53,6 +47,13 @@ const CommentsModal = ({
         duration: 300,
         useNativeDriver: false,
       }).start();
+
+      // Enfocar el input después de un breve delay
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 350);
     } else {
       Animated.timing(modalHeight, {
         toValue: 0,
@@ -67,13 +68,19 @@ const CommentsModal = ({
     const showSubscription = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
       (e) => {
-        setKeyboardHeight(e.endCoordinates.height);
+        setKeyboardVisible(true);
+        // Desplazar un poco hacia arriba cuando aparece el teclado
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
       }
     );
     const hideSubscription = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
-        setKeyboardHeight(0);
+        setKeyboardVisible(false);
       }
     );
 
@@ -83,78 +90,85 @@ const CommentsModal = ({
     };
   }, []);
 
-  // Función para obtener el nombre del autor del post
-  const getPostAuthorName = () => {
-    if (post?.authorName) return post.authorName;
-    if (post?.authorData?.name) {
-      const name = post.authorData.name;
-      return `${name.name || ""} ${name.apellidopat || ""}`.trim();
-    }
-    return post?.authorEmail || "Usuario";
-  };
+  // Manejar clic fuera del modal
+  const handleOverlayPress = (event) => {
+    // Solo cerrar si se hizo clic en el overlay (no en el contenido del modal)
+    if (modalContentRef.current) {
+      modalContentRef.current.measure((fx, fy, width, height, px, py) => {
+        const tapX = event.nativeEvent.pageX;
+        const tapY = event.nativeEvent.pageY;
 
-  // Función para formatear fecha
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    try {
-      if (timestamp.toDate) {
-        const date = timestamp.toDate();
-        const now = new Date();
-        const diffMs = now - date;
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-
-        if (diffHours < 24) return `Hace ${diffHours} horas`;
-        if (diffDays < 7) return `Hace ${diffDays} días`;
-        return date.toLocaleDateString("es-ES");
-      }
-      return new Date(timestamp).toLocaleDateString("es-ES");
-    } catch {
-      return "";
+        // Verificar si el tap está fuera del contenido del modal
+        if (tapY < py || tapY > py + height || tapX < px || tapX > px + width) {
+          onClose();
+        }
+      });
     }
   };
 
-  // Manejar envío de comentario desde input rápido
+  // Manejar envío de comentario
   const handleSubmitComment = async () => {
     if (!commentInput.trim() || isSubmitting || !permissions.canComment) {
       return;
     }
 
+    if (!currentUser) {
+      Alert.alert("Error", "Debes iniciar sesión para comentar");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Aquí se integrará con useCommentActions.createComment
-      // Por ahora solo mostramos el modal completo
-      setShowCreateCommentModal(true);
-      setCommentInput("");
+      const commentData = {
+        content: commentInput.trim(),
+        postId: post?.id,
+        parentCommentId: replyToComment?.id || null,
+      };
+
+      const result = await createComment(commentData);
+
+      if (result.success) {
+        // Éxito: limpiar input
+        setCommentInput("");
+        setReplyToComment(null);
+
+        // Ocultar teclado
+        Keyboard.dismiss();
+
+        // Desplazar al final suavemente
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 300);
+      } else {
+        Alert.alert("Error", result.error || "No se pudo enviar el comentario");
+      }
     } catch (error) {
-      Alert.alert("Error", "No se pudo enviar el comentario");
+      Alert.alert("Error", "Ocurrió un error al enviar el comentario");
+      console.error("Error en handleSubmitComment:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Manejar clic en "Responder" desde un comentario
+  // Manejar clic en "Responder"
   const handleReplyToComment = (comment) => {
     setReplyToComment(comment);
-    setShowCreateCommentModal(true);
-  };
-
-  // Manejar creación exitosa de comentario
-  const handleCommentCreated = () => {
-    setShowCreateCommentModal(false);
-    setReplyToComment(null);
-    if (onCommentAdded) {
-      onCommentAdded();
-    }
-    // Desplazar al final de la lista
+    // Enfocar el input
     setTimeout(() => {
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollToEnd({ animated: true });
+      if (inputRef.current) {
+        inputRef.current.focus();
       }
-    }, 500);
+    }, 100);
   };
 
-  // Renderizar header del modal
+  // Cancelar respuesta
+  const handleCancelReply = () => {
+    setReplyToComment(null);
+  };
+
+  // Renderizar header
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -172,43 +186,27 @@ const CommentsModal = ({
     </View>
   );
 
-  // Renderizar información del post
-  const renderPostInfo = () => (
-    <View style={styles.postInfoContainer}>
-      <View style={styles.postAuthorRow}>
-        {post?.authorPhoto ? (
-          <Image
-            source={{ uri: post.authorPhoto }}
-            style={styles.postAuthorAvatar}
-          />
-        ) : (
-          <View style={[styles.postAuthorAvatar, styles.avatarPlaceholder]}>
-            <IconButton icon="account" size={16} iconColor="#fff" />
-          </View>
-        )}
-        <View style={styles.postAuthorInfo}>
-          <Text style={styles.postAuthorName}>{getPostAuthorName()}</Text>
-          {post?.authorSpecialty && (
-            <Text style={styles.postAuthorSpecialty}>
-              {post.authorSpecialty}
-            </Text>
-          )}
+  // Renderizar indicador de respuesta
+  const renderReplyIndicator = () => {
+    if (!replyToComment) return null;
+
+    return (
+      <View style={styles.replyIndicator}>
+        <View style={styles.replyIndicatorContent}>
+          <IconButton icon="reply" size={16} iconColor="#3b82f6" />
+          <Text style={styles.replyIndicatorText} numberOfLines={1}>
+            Respondiendo a: {replyToComment.authorName || "usuario"}
+          </Text>
+          <TouchableOpacity onPress={handleCancelReply}>
+            <IconButton icon="close" size={16} iconColor="#6b7280" />
+          </TouchableOpacity>
         </View>
       </View>
+    );
+  };
 
-      <Text style={styles.postTitle} numberOfLines={2}>
-        {post?.title}
-      </Text>
-
-      <View style={styles.postMeta}>
-        <IconButton icon="calendar" size={14} iconColor="#6b7280" />
-        <Text style={styles.postDate}>{formatDate(post?.createdAt)}</Text>
-      </View>
-    </View>
-  );
-
-  // Renderizar input rápido para comentar (solo para usuarios verificados)
-  const renderQuickCommentInput = () => {
+  // Renderizar input para comentar
+  const renderCommentInput = () => {
     if (!currentUser) {
       return (
         <View style={styles.loginPrompt}>
@@ -231,31 +229,49 @@ const CommentsModal = ({
     }
 
     return (
-      <View style={styles.quickInputContainer}>
-        <TextInput
-          style={styles.commentInput}
-          placeholder="Escribe un comentario..."
-          placeholderTextColor="#9ca3af"
-          value={commentInput}
-          onChangeText={setCommentInput}
-          multiline
-          maxLength={500}
-          editable={!isSubmitting}
-        />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!commentInput.trim() || isSubmitting) && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSubmitComment}
-          disabled={!commentInput.trim() || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size={20} color="#ffffff" />
-          ) : (
-            <IconButton icon="send" size={20} iconColor="#ffffff" />
-          )}
-        </TouchableOpacity>
+      <View style={styles.inputContainer}>
+        {renderReplyIndicator()}
+        <View style={styles.inputRow}>
+          <TextInput
+            ref={inputRef}
+            style={styles.commentInput}
+            placeholder={
+              replyToComment
+                ? `Escribe tu respuesta a ${
+                    replyToComment.authorName || "este comentario"
+                  }...`
+                : "Escribe un comentario..."
+            }
+            placeholderTextColor="#9ca3af"
+            value={commentInput}
+            onChangeText={setCommentInput}
+            multiline
+            maxLength={500}
+            editable={!isSubmitting}
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              // Enviar al presionar "enter" en iOS/Android
+              if (commentInput.trim() && !isSubmitting) {
+                handleSubmitComment();
+              }
+            }}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!commentInput.trim() || isSubmitting) &&
+                styles.sendButtonDisabled,
+            ]}
+            onPress={handleSubmitComment}
+            disabled={!commentInput.trim() || isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size={20} color="#ffffff" />
+            ) : (
+              <IconButton icon="send" size={20} iconColor="#ffffff" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -276,9 +292,6 @@ const CommentsModal = ({
         <View style={styles.errorContainer}>
           <IconButton icon="alert-circle" size={48} iconColor="#ef4444" />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => {}}>
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
         </View>
       );
     }
@@ -299,9 +312,7 @@ const CommentsModal = ({
       <CommentList
         comments={comments}
         postId={post?.id}
-        userData={userData}
         onReply={handleReplyToComment}
-        onCommentCreated={handleCommentCreated}
         onCommentDeleted={onCommentDeleted}
         scrollViewRef={scrollViewRef}
       />
@@ -316,33 +327,25 @@ const CommentsModal = ({
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >
-      <SafeAreaView style={styles.safeArea}>
-        {/* Overlay para cerrar al tocar fuera */}
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={onClose}
-        />
+      <View style={styles.safeArea}>
+        {/* Overlay que NO cierra al tocar el teclado */}
+        <TouchableWithoutFeedback
+          onPress={handleOverlayPress}
+          accessible={false}
+        >
+          <View style={styles.overlay} />
+        </TouchableWithoutFeedback>
 
         {/* Contenedor del modal animado */}
         <Animated.View
-          style={[
-            styles.modalContent,
-            { height: modalHeight },
-            { marginBottom: keyboardHeight > 0 ? 0 : -20 },
-          ]}
+          ref={modalContentRef}
+          style={[styles.modalContent, { height: modalHeight }]}
         >
           {/* Indicador de arrastre */}
           <View style={styles.dragIndicator} />
 
           {/* Header */}
           {renderHeader()}
-
-          {/* Información del post */}
-          {renderPostInfo()}
-
-          {/* Separador */}
-          <View style={styles.separator} />
 
           {/* Lista de comentarios */}
           <KeyboardAvoidingView
@@ -355,31 +358,20 @@ const CommentsModal = ({
               style={styles.commentsScrollView}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.scrollContent}
             >
               {renderCommentsContent()}
+              {/* Espacio para que el input no tape los comentarios */}
+              <View style={styles.bottomSpacing} />
             </ScrollView>
 
-            {/* Input rápido para comentar (siempre visible) */}
+            {/* Input para comentar - FIJO en la parte inferior */}
             <View style={styles.fixedInputContainer}>
-              {renderQuickCommentInput()}
+              {renderCommentInput()}
             </View>
           </KeyboardAvoidingView>
         </Animated.View>
-      </SafeAreaView>
-
-      {/* Modal para crear comentario/responder (con más opciones) */}
-      <CreateCommentModal
-        visible={showCreateCommentModal}
-        onClose={() => {
-          setShowCreateCommentModal(false);
-          setReplyToComment(null);
-        }}
-        postId={post?.id}
-        postTitle={post?.title}
-        parentCommentId={replyToComment?.id}
-        parentCommentAuthor={replyToComment?.authorName}
-        onCommentCreated={handleCommentCreated}
-      />
+      </View>
     </Modal>
   );
 };
@@ -447,77 +439,46 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     fontWeight: "500",
   },
-  postInfoContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: "#f9fafb",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  postAuthorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  postAuthorAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: 12,
-  },
-  avatarPlaceholder: {
-    backgroundColor: "#4f46e5",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  postAuthorInfo: {
-    flex: 1,
-  },
-  postAuthorName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1f2937",
-    marginBottom: 2,
-  },
-  postAuthorSpecialty: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontStyle: "italic",
-  },
-  postTitle: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#374151",
-    marginBottom: 8,
-    lineHeight: 20,
-  },
-  postMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  postDate: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginLeft: -8,
-  },
-  separator: {
-    height: 8,
-    backgroundColor: "#f9fafb",
-  },
   keyboardAvoidingView: {
     flex: 1,
   },
   commentsScrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 100, // Espacio para el input
+  },
   fixedInputContainer: {
+    backgroundColor: "#ffffff",
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    backgroundColor: "#ffffff",
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  quickInputContainer: {
+  inputContainer: {
+    backgroundColor: "#ffffff",
+  },
+  replyIndicator: {
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+  },
+  replyIndicatorContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  replyIndicatorText: {
+    fontSize: 13,
+    color: "#3b82f6",
+    fontWeight: "500",
+    flex: 1,
+    marginLeft: 8,
+  },
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f9fafb",
@@ -533,6 +494,7 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     maxHeight: 100,
     paddingVertical: 8,
+    minHeight: 40,
   },
   sendButton: {
     width: 36,
@@ -549,6 +511,8 @@ const styles = StyleSheet.create({
   loginPrompt: {
     paddingVertical: 12,
     alignItems: "center",
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
   },
   loginPromptText: {
     fontSize: 14,
@@ -595,17 +559,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 20,
   },
-  retryButton: {
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -624,6 +577,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
     textAlign: "center",
+  },
+  bottomSpacing: {
+    height: 80, // Espacio para que el input no tape el último comentario
   },
 });
 

@@ -9,12 +9,14 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
+  Modal,
+  TouchableWithoutFeedback,
+  Dimensions,
 } from "react-native";
-import { IconButton, Menu, Divider } from "react-native-paper";
+import { IconButton } from "react-native-paper";
 import { auth } from "../../config/firebase";
 import { useCommentActions } from "../../hooks/useCommentActions";
 import { useCommentLikes } from "../../hooks/useCommentLikes";
-import { useUserPermissions } from "../../hooks/useUserPermissions";
 import EditCommentModal from "./EditCommentModal";
 import DeleteCommentModal from "./DeleteCommentModal";
 
@@ -29,21 +31,22 @@ if (
 const CommentCard = ({
   comment,
   postId,
-  userData,
   onReply,
   onCommentDeleted,
-  onCommentCreated,
   isReply = false,
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showFullContent, setShowFullContent] = useState(false);
   const [needsExpansion, setNeedsExpansion] = useState(false);
   const [authorData, setAuthorData] = useState(null);
   const [loadingAuthor, setLoadingAuthor] = useState(false);
-  const contentRef = useRef(null);
+  const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
   const [contentHeight, setContentHeight] = useState(0);
+
+  const contentRef = useRef(null);
+  const menuButtonRef = useRef(null);
 
   const currentUser = auth.currentUser;
   const {
@@ -56,9 +59,8 @@ const CommentCard = ({
     userLiked,
     loading: likesLoading,
   } = useCommentLikes(comment.id);
-  const { checkCommentPermissions } = useUserPermissions();
 
-  // Configuración de animación para expandir/contraer
+  // Configuración de animación
   const animationConfig = {
     duration: 200,
     create: {
@@ -70,32 +72,41 @@ const CommentCard = ({
     },
   };
 
-  // Cargar datos del autor del comentario
+  // Cargar datos del autor
   useEffect(() => {
+    let isMounted = true;
+
     const loadAuthor = async () => {
-      if (!comment.authorId) return;
+      if (!comment.authorId || authorData) return;
 
       setLoadingAuthor(true);
       try {
         const author = await getCommentAuthor(comment.authorId);
-        setAuthorData(author);
+        if (isMounted) {
+          setAuthorData(author);
+        }
       } catch (error) {
         console.error("Error cargando autor:", error);
       } finally {
-        setLoadingAuthor(false);
+        if (isMounted) {
+          setLoadingAuthor(false);
+        }
       }
     };
 
     loadAuthor();
+
+    return () => {
+      isMounted = false;
+    };
   }, [comment.authorId]);
 
   // Verificar si el contenido necesita expansión
   useEffect(() => {
     if (contentHeight > 0) {
-      const lineHeight = 20; // Altura aproximada de línea en React Native
+      const lineHeight = 20;
       const maxLines = 6;
       const maxHeight = lineHeight * maxLines;
-
       setNeedsExpansion(contentHeight > maxHeight);
     }
   }, [contentHeight]);
@@ -103,16 +114,12 @@ const CommentCard = ({
   // Obtener nombre del autor
   const getAuthorName = () => {
     if (comment.authorName) return comment.authorName;
-
     if (authorData) {
       const name = authorData.name || {};
-      const fullName = `${name.name || ""} ${name.apellidopat || ""} ${
-        name.apellidomat || ""
-      }`.trim();
+      const fullName = `${name.name || ""} ${name.apellidopat || ""}`.trim();
       if (fullName) return fullName;
       return authorData.email || "Usuario";
     }
-
     return "Usuario";
   };
 
@@ -189,44 +196,18 @@ const CommentCard = ({
   // Manejar edición
   const handleEdit = () => {
     setShowEditModal(true);
-    setShowMenu(false);
+    setShowPopover(false);
   };
 
   // Manejar eliminación
   const handleDelete = () => {
     setShowDeleteModal(true);
-    setShowMenu(false);
-  };
-
-  // Manejar reporte
-  const handleReport = () => {
-    Alert.alert(
-      "Reportar comentario",
-      "¿Estás seguro de que quieres reportar este comentario?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Reportar",
-          style: "destructive",
-          onPress: () => {
-            // Aquí se integraría la lógica de reporte
-            Alert.alert(
-              "Reporte enviado",
-              "El comentario ha sido reportado a los moderadores"
-            );
-          },
-        },
-      ]
-    );
-    setShowMenu(false);
+    setShowPopover(false);
   };
 
   // Manejar actualización exitosa del comentario
   const handleCommentUpdated = () => {
     setShowEditModal(false);
-    if (onCommentCreated) {
-      onCommentCreated();
-    }
   };
 
   // Manejar eliminación exitosa del comentario
@@ -243,37 +224,57 @@ const CommentCard = ({
     setShowFullContent(!showFullContent);
   };
 
-  // Verificar permisos del usuario actual sobre este comentario
+  // Manejar clic en el botón de menú
+  const handleMenuPress = () => {
+    if (menuButtonRef.current) {
+      menuButtonRef.current.measureInWindow((x, y, width, height) => {
+        // Calcular posición para el popover
+        const screenWidth = Dimensions.get("window").width || 375;
+        const popoverWidth = 160;
+
+        // Calcular posición X (evitar que se salga de la pantalla)
+        let popoverX = x - popoverWidth / 2 + width / 2;
+
+        // Ajustar si se sale por la derecha
+        if (popoverX + popoverWidth > screenWidth - 10) {
+          popoverX = screenWidth - popoverWidth - 10;
+        }
+
+        // Ajustar si se sale por la izquierda
+        if (popoverX < 10) {
+          popoverX = 10;
+        }
+
+        // Posición Y (debajo del botón)
+        const popoverY = y + height + 5;
+
+        setPopoverPosition({ x: popoverX, y: popoverY });
+        setShowPopover(true);
+      });
+    }
+  };
+
+  // Verificar permisos del usuario actual
   const getUserPermissions = () => {
-    if (!currentUser || !userData) {
+    if (!currentUser) {
       return {
         isAuthor: false,
         canEdit: false,
         canDelete: false,
         canReply: false,
-        canReport: false,
-        canModerate: false,
       };
     }
 
     const isAuthor = currentUser.uid === comment.authorId;
-    const isVerified = userData.role !== "unverified";
-    const canReply =
-      isVerified && ["doctor", "moderator", "admin"].includes(userData.role);
     const canEdit = isAuthor;
-    const canDelete =
-      isAuthor || ["moderator", "admin"].includes(userData.role);
-    const canReport =
-      !isAuthor && !["moderator", "admin"].includes(userData.role);
-    const canModerate = ["moderator", "admin"].includes(userData.role);
+    const canDelete = isAuthor;
+    const canReply = true;
 
     return {
       isAuthor,
       canEdit,
       canDelete,
       canReply,
-      canReport,
-      canModerate,
     };
   };
 
@@ -334,6 +335,65 @@ const CommentCard = ({
     </View>
   );
 
+  // Renderizar popover/menú personalizado
+  const renderPopover = () => (
+    <Modal
+      visible={showPopover}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowPopover(false)}
+    >
+      <TouchableWithoutFeedback onPress={() => setShowPopover(false)}>
+        <View style={styles.popoverOverlay}>
+          <View
+            style={[
+              styles.popoverContainer,
+              {
+                position: "absolute",
+                top: popoverPosition.y,
+                left: popoverPosition.x,
+              },
+            ]}
+          >
+            {/* Contenido del popover */}
+            <View style={styles.popoverContent}>
+              <TouchableOpacity
+                style={styles.popoverItem}
+                onPress={() => {
+                  setShowPopover(false);
+                  handleEdit();
+                }}
+              >
+                <IconButton icon="pencil" size={18} iconColor="#4b5563" />
+                <Text style={styles.popoverItemText}>Editar</Text>
+              </TouchableOpacity>
+
+              <View style={styles.popoverDivider} />
+
+              <TouchableOpacity
+                style={[styles.popoverItem, styles.popoverDeleteItem]}
+                onPress={() => {
+                  setShowPopover(false);
+                  handleDelete();
+                }}
+              >
+                <IconButton icon="delete" size={18} iconColor="#ef4444" />
+                <Text
+                  style={[styles.popoverItemText, styles.popoverDeleteText]}
+                >
+                  Eliminar
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Flecha indicadora (opcional) */}
+            <View style={styles.popoverArrow} />
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+
   // Renderizar acciones del comentario
   const renderActions = () => (
     <View style={styles.actionsContainer}>
@@ -355,7 +415,7 @@ const CommentCard = ({
         )}
       </TouchableOpacity>
 
-      {/* Reply button (solo usuarios verificados) */}
+      {/* Reply button */}
       {permissions.canReply && (
         <TouchableOpacity style={styles.actionButton} onPress={handleReply}>
           <IconButton icon="reply" size={18} iconColor="#6b7280" />
@@ -363,82 +423,19 @@ const CommentCard = ({
         </TouchableOpacity>
       )}
 
-      {/* Menú contextual (solo si el usuario tiene algún permiso) */}
-      {(permissions.isAuthor ||
-        permissions.canDelete ||
-        permissions.canReport) && (
+      {/* Menú contextual SOLO para autores - POPOVER PERSONALIZADO */}
+      {permissions.isAuthor && (
         <View style={styles.menuContainer}>
-          <Menu
-            visible={showMenu}
-            onDismiss={() => setShowMenu(false)}
-            anchor={
-              <TouchableOpacity onPress={() => setShowMenu(true)}>
-                <IconButton
-                  icon="dots-horizontal"
-                  size={18}
-                  iconColor="#6b7280"
-                />
-              </TouchableOpacity>
-            }
-            style={styles.menu}
+          <TouchableOpacity
+            ref={menuButtonRef}
+            onPress={handleMenuPress}
+            style={styles.menuButton}
           >
-            {/* Acciones del autor */}
-            {permissions.isAuthor && (
-              <>
-                <Menu.Item
-                  leadingIcon="pencil"
-                  onPress={handleEdit}
-                  title="Editar"
-                  titleStyle={styles.menuItemText}
-                />
-                <Divider />
-                <Menu.Item
-                  leadingIcon="delete"
-                  onPress={handleDelete}
-                  title="Eliminar"
-                  titleStyle={[styles.menuItemText, styles.deleteText]}
-                />
-              </>
-            )}
+            <IconButton icon="dots-horizontal" size={20} iconColor="#6b7280" />
+          </TouchableOpacity>
 
-            {/* Reportar (solo usuarios normales, no autores ni moderadores) */}
-            {permissions.canReport && (
-              <Menu.Item
-                leadingIcon="flag"
-                onPress={handleReport}
-                title="Reportar"
-                titleStyle={[styles.menuItemText, styles.reportText]}
-              />
-            )}
-
-            {/* Acciones de moderación */}
-            {permissions.canModerate && !permissions.isAuthor && (
-              <>
-                <Divider />
-                <Text style={styles.moderatorSectionTitle}>Moderación</Text>
-                <Menu.Item
-                  leadingIcon="delete"
-                  onPress={() => {
-                    setShowMenu(false);
-                    Alert.alert(
-                      "Eliminar como moderador",
-                      "¿Eliminar este comentario como moderador?",
-                      [
-                        { text: "Cancelar", style: "cancel" },
-                        {
-                          text: "Eliminar",
-                          style: "destructive",
-                          onPress: () => handleDelete(),
-                        },
-                      ]
-                    );
-                  }}
-                  title="Eliminar como moderador"
-                  titleStyle={[styles.menuItemText, styles.moderatorDeleteText]}
-                />
-              </>
-            )}
-          </Menu>
+          {/* Renderizar popover si está activo */}
+          {renderPopover()}
         </View>
       )}
     </View>
@@ -455,14 +452,7 @@ const CommentCard = ({
       >
         {/* Header con información del autor */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.authorInfo}
-            onPress={() => {
-              // Aquí se podría navegar al perfil del autor
-              Alert.alert("Perfil", `Ver perfil de ${getAuthorName()}`);
-            }}
-            disabled={loadingAuthor}
-          >
+          <View style={styles.authorInfo}>
             {renderAuthorAvatar()}
 
             <View style={styles.authorDetails}>
@@ -504,7 +494,7 @@ const CommentCard = ({
                 )}
               </View>
             </View>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Contenido del comentario */}
@@ -527,7 +517,7 @@ const CommentCard = ({
         onClose={() => setShowDeleteModal(false)}
         comment={comment}
         onCommentDeleted={handleCommentDeleted}
-        isModeratorAction={permissions.canModerate && !permissions.isAuthor}
+        isModeratorAction={false}
       />
     </>
   );
@@ -669,30 +659,72 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     marginLeft: "auto",
+    zIndex: 10,
   },
-  menu: {
-    marginTop: 40,
+  menuButton: {
+    padding: 4,
   },
-  menuItemText: {
-    fontSize: 14,
+
+  // Estilos para el Popover
+  popoverOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.1)",
   },
-  deleteText: {
-    color: "#ef4444",
+  popoverContainer: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000,
   },
-  reportText: {
-    color: "#f59e0b",
+  popoverArrow: {
+    position: "absolute",
+    top: -8,
+    right: 20,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "#ffffff",
   },
-  moderatorSectionTitle: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontWeight: "600",
+  popoverContent: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 160,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  popoverItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: "#f9fafb",
+    borderRadius: 8,
   },
-  moderatorDeleteText: {
+  popoverItemText: {
+    fontSize: 15,
+    color: "#374151",
+    marginLeft: 12,
+    fontWeight: "500",
+  },
+  popoverDivider: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginVertical: 4,
+  },
+  popoverDeleteItem: {
+    backgroundColor: "#fef2f2",
+  },
+  popoverDeleteText: {
     color: "#dc2626",
-    fontWeight: "600",
   },
 });
 
