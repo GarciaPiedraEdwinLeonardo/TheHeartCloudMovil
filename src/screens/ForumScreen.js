@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  SafeAreaView,
 } from "react-native";
 import {
   IconButton,
@@ -494,7 +493,7 @@ const ForumScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header fijo */}
       {renderForumHeader()}
 
@@ -573,7 +572,7 @@ const ForumScreen = ({ navigation, route }) => {
         canPostWithoutApproval={isOwner || isModerator}
         onPostCreated={handlePostCreated}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

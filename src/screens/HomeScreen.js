@@ -233,7 +233,6 @@ const HomeScreen = ({ navigation }) => {
         <PostCard
           key={post.id}
           post={post}
-          onCommentClick={() => navigateToPost(post)}
           onAuthorPress={() => navigateToProfile(post.authorId)}
           onForumPress={() => navigateToForum(post.forumData)}
           onViewPost={() => navigateToPost(post)}

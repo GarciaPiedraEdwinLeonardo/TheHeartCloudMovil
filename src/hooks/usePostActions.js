@@ -2,8 +2,8 @@ import { useState } from "react";
 import {
   doc,
   getDoc,
+  setDoc,
   updateDoc,
-  deleteDoc,
   arrayUnion,
   arrayRemove,
   increment,
@@ -440,7 +440,7 @@ export const usePostActions = () => {
 
       // Agregar documento a Firestore
       const postRef = doc(collection(db, "posts"));
-      await updateDoc(postRef, newPost);
+      await setDoc(postRef, newPost);
 
       // Actualizar estadísticas del foro
       const forumRef = doc(db, "forums", postData.forumId);

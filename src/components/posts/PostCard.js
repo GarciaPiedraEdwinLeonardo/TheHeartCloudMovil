@@ -7,12 +7,14 @@ import {
   Image,
   ScrollView,
   Modal,
+  Alert,
 } from "react-native";
 import { IconButton, Menu, Divider } from "react-native-paper";
 import { auth } from "../../config/firebase";
-import PostImages from "../posts/PostImages";
-import EditPostModal from "../posts/EditPostModal";
-import DeletePostModal from "../posts/DeletePostModal";
+import PostImages from "./PostImages";
+import EditPostModal from "./EditPostModal";
+import DeletePostModal from "./DeletePostModal";
+import CommentsModal from "../comments/CommentsModal";
 import { usePostActions } from "../../hooks/usePostActions";
 
 const PostCard = ({
@@ -28,9 +30,13 @@ const PostCard = ({
   const [showMenu, setShowMenu] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false); // NUEVO ESTADO
   const [userReaction, setUserReaction] = useState(null);
   const [likeCount, setLikeCount] = useState(0);
   const [dislikeCount, setDislikeCount] = useState(0);
+  const [commentCount, setCommentCount] = useState(
+    post.stats?.commentCount || 0
+  ); // NUEVO ESTADO
 
   const currentUser = auth.currentUser;
   const isAuthor = currentUser && currentUser.uid === post.authorId;
@@ -43,6 +49,7 @@ const PostCard = ({
 
     setLikeCount(likes.length);
     setDislikeCount(dislikes.length);
+    setCommentCount(post.stats?.commentCount || 0); // Inicializar contador de comentarios
 
     if (currentUser) {
       const userId = currentUser.uid;
@@ -56,7 +63,7 @@ const PostCard = ({
     }
   }, [post, currentUser]);
 
-  // Función para obtener el nombre del autor (usa email si name es null)
+  // Función para obtener el nombre del autor
   const getAuthorName = () => {
     if (post.authorName) return post.authorName;
 
@@ -141,6 +148,46 @@ const PostCard = ({
     }
   };
 
+  // NUEVA FUNCIÓN: Manejar clic en botón de comentarios
+  const handleCommentClick = () => {
+    // Siempre abrir el modal de comentarios
+    setShowCommentsModal(true);
+
+    // Si hay un callback externo, podemos llamarlo también si es necesario
+    // pero NO para navegar
+    if (onCommentClick && typeof onCommentClick === "function") {
+      // Podemos pasar los datos del post sin navegar
+      onCommentClick(post);
+    }
+  };
+
+  // NUEVA FUNCIÓN: Manejar cuando se agrega un comentario
+  const handleCommentAdded = () => {
+    // Actualizar contador local
+    setCommentCount((prev) => prev + 1);
+
+    // Notificar al componente padre si es necesario
+    if (onPostUpdated) {
+      // Podríamos querer refrescar los datos del post
+      onPostUpdated();
+    }
+  };
+
+  // NUEVA FUNCIÓN: Manejar cuando se elimina un comentario
+  const handleCommentDeleted = (commentId, deletionType) => {
+    // Actualizar contador local
+    setCommentCount((prev) => Math.max(0, prev - 1));
+
+    // Podemos mostrar un mensaje si fue eliminación de moderador
+    if (deletionType === "moderator") {
+      Alert.alert(
+        "Comentario eliminado",
+        "Un moderador ha eliminado este comentario",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
   const authorName = getAuthorName();
 
   return (
@@ -178,7 +225,7 @@ const PostCard = ({
                 )}
               </View>
 
-              {/* Especialidad médica - diseño simple */}
+              {/* Especialidad médica */}
               {post.authorSpecialty && (
                 <Text style={styles.specialtyText} numberOfLines={1}>
                   {post.authorSpecialty}
@@ -329,16 +376,14 @@ const PostCard = ({
                 {/* Sin contador para dislike */}
               </TouchableOpacity>
 
-              {/* Comment button */}
+              {/* Comment button - MODIFICADO */}
               <TouchableOpacity
                 style={styles.commentButton}
-                onPress={() => onCommentClick && onCommentClick(post)}
+                onPress={handleCommentClick}
               >
                 <IconButton icon="comment" size={20} iconColor="#6b7280" />
-                {post.stats?.commentCount > 0 && (
-                  <Text style={styles.commentCount}>
-                    {post.stats?.commentCount || 0}
-                  </Text>
+                {commentCount > 0 && (
+                  <Text style={styles.commentCount}>{commentCount}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -346,7 +391,7 @@ const PostCard = ({
         </View>
       </View>
 
-      {/* Modales */}
+      {/* Modales existentes */}
       <EditPostModal
         visible={showEditModal}
         onClose={() => setShowEditModal(false)}
@@ -359,6 +404,15 @@ const PostCard = ({
         onClose={() => setShowDeleteModal(false)}
         post={post}
         onPostDeleted={onPostDeleted}
+      />
+
+      {/* NUEVO MODAL: Comentarios */}
+      <CommentsModal
+        visible={showCommentsModal}
+        onClose={() => setShowCommentsModal(false)}
+        post={post}
+        onCommentAdded={handleCommentAdded}
+        onCommentDeleted={handleCommentDeleted}
       />
     </>
   );
