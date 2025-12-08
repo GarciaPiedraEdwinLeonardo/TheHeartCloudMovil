@@ -1,337 +1,586 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
+  Modal,
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
-  FlatList,
-  TextInput,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
+  TextInput,
+  Alert,
+  Dimensions,
+  Animated,
   Keyboard,
   TouchableWithoutFeedback,
-  Alert,
-  StatusBar,
 } from "react-native";
-import { IconButton } from "react-native-paper";
-import CommentCard from "./CommentCard";
+import { IconButton, ActivityIndicator } from "react-native-paper";
 import { auth } from "../../config/firebase";
+import CommentList from "./CommentList";
 import { useComments } from "../../hooks/useComments";
+import { useUserPermissions } from "../../hooks/useUserPermissions";
 import { useCommentActions } from "../../hooks/useCommentActions";
 
+const { height, width } = Dimensions.get("window");
+
 const CommentsModal = ({ visible, onClose, post, onCommentDeleted }) => {
-  const [newComment, setNewComment] = useState("");
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const flatListRef = useRef(null);
+  const [replyToComment, setReplyToComment] = useState(null);
+  const [commentInput, setCommentInput] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const scrollViewRef = useRef(null);
+  const inputRef = useRef(null);
+  const modalContentRef = useRef(null);
+  const modalHeight = useRef(new Animated.Value(0)).current;
 
   const currentUser = auth.currentUser;
-  const { comments, loading, loadMoreComments, hasMore } = useComments(post.id);
-  const { addComment, loading: addingComment } = useCommentActions();
+  // Configurar límite de profundidad para móvil (2 niveles)
+  const { comments, loading, error } = useComments(post?.id, 50, 2);
+  const { permissions } = useUserPermissions();
+  const { createComment } = useCommentActions();
 
-  // Manejar altura del teclado
+  // Animación de entrada del modal
   useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
+    if (visible) {
+      Animated.timing(modalHeight, {
+        toValue: height * 0.85,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
+
+      // Enfocar el input después de un breve delay
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 350);
+
+      // Limpiar estado de respuesta al abrir
+      setReplyToComment(null);
+    } else {
+      Animated.timing(modalHeight, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+      setCommentInput("");
+      setReplyToComment(null);
+    }
+  }, [visible]);
+
+  // Efecto para manejar el teclado
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (event) => {
-        setKeyboardHeight(event.endCoordinates.height);
+      (e) => {
+        setKeyboardVisible(true);
+        // Desplazar un poco hacia arriba cuando aparece el teclado
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
       }
     );
-
-    const keyboardDidHideListener = Keyboard.addListener(
+    const hideSubscription = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
-        setKeyboardHeight(0);
+        setKeyboardVisible(false);
       }
     );
 
     return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
+      showSubscription.remove();
+      hideSubscription.remove();
     };
   }, []);
 
-  // Desplazar al final cuando se agregan comentarios
-  useEffect(() => {
-    if (comments.length > 0 && flatListRef.current) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+  // Manejar clic fuera del modal
+  const handleOverlayPress = (event) => {
+    // Solo cerrar si se hizo clic en el overlay (no en el contenido del modal)
+    if (modalContentRef.current) {
+      modalContentRef.current.measure((fx, fy, width, height, px, py) => {
+        const tapX = event.nativeEvent.pageX;
+        const tapY = event.nativeEvent.pageY;
+
+        // Verificar si el tap está fuera del contenido del modal
+        if (tapY < py || tapY > py + height || tapX < px || tapX > px + width) {
+          onClose();
+        }
+      });
     }
-  }, [comments.length]);
+  };
 
+  // Manejar envío de comentario
   const handleSubmitComment = async () => {
-    if (!newComment.trim() || !currentUser) return;
+    if (!commentInput.trim() || isSubmitting || !permissions.canComment) {
+      return;
+    }
 
+    if (!currentUser) {
+      Alert.alert("Error", "Debes iniciar sesión para comentar");
+      return;
+    }
+
+    // Validar límite de profundidad antes de enviar
+    if (replyToComment) {
+      // Verificar si ya es una respuesta (nivel 1)
+      // En una implementación real, necesitarías verificar la profundidad del comentario padre
+      // Por ahora, asumimos que si replyToComment tiene parentCommentId, es nivel 1
+      if (replyToComment.parentCommentId) {
+        Alert.alert(
+          "Límite alcanzado",
+          "No se pueden agregar más respuestas a este hilo en la versión móvil.",
+          [{ text: "Entendido" }]
+        );
+        setReplyToComment(null);
+        setCommentInput("");
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
     try {
-      const result = await addComment(
-        post.id,
-        newComment.trim(),
-        replyingTo?.id
-      );
+      const commentData = {
+        content: commentInput.trim(),
+        postId: post?.id,
+        parentCommentId: replyToComment?.id || null,
+      };
+
+      const result = await createComment(commentData);
 
       if (result.success) {
-        setNewComment("");
-        setReplyingTo(null);
+        // Éxito: limpiar input
+        setCommentInput("");
+        setReplyToComment(null);
+
+        // Ocultar teclado
         Keyboard.dismiss();
+
+        // Desplazar al final suavemente
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 300);
+
+        // Mostrar confirmación
+        Alert.alert(
+          "Comentario publicado",
+          "Tu comentario ha sido publicado exitosamente.",
+          [{ text: "OK" }]
+        );
       } else {
-        Alert.alert("Error", "No se pudo agregar el comentario");
+        Alert.alert("Error", result.error || "No se pudo enviar el comentario");
       }
     } catch (error) {
-      console.error("Error al agregar comentario:", error);
-      Alert.alert("Error", "Ocurrió un error al agregar el comentario");
+      Alert.alert("Error", "Ocurrió un error al enviar el comentario");
+      console.error("Error en handleSubmitComment:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleReply = (comment) => {
-    setReplyingTo(comment);
-    // El foco se manejará automáticamente al renderizar
+  // Manejar clic en "Responder"
+  const handleReplyToComment = (comment) => {
+    // Validar límite de profundidad
+    if (comment.parentCommentId) {
+      Alert.alert(
+        "Límite alcanzado",
+        "No se pueden agregar más respuestas a este hilo en la versión móvil.",
+        [{ text: "Entendido" }]
+      );
+      return;
+    }
+
+    setReplyToComment(comment);
+    // Enfocar el input
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
   };
 
+  // Cancelar respuesta
   const handleCancelReply = () => {
-    setReplyingTo(null);
-    Keyboard.dismiss();
+    setReplyToComment(null);
   };
 
-  const renderComment = ({ item }) => (
-    <CommentCard
-      comment={item}
-      postId={post.id}
-      onReply={handleReply}
-      onCommentDeleted={onCommentDeleted}
-      isReply={item.parentCommentId !== null}
-    />
-  );
-
+  // Renderizar header
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>Comentarios</Text>
-      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-        <IconButton icon="close" size={24} iconColor="#374151" />
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderInput = () => (
-    <View
-      style={[
-        styles.inputContainer,
-        {
-          marginBottom: keyboardHeight > 0 ? 0 : Platform.OS === "ios" ? 20 : 0,
-        },
-      ]}
-    >
-      {replyingTo && (
-        <View style={styles.replyIndicator}>
-          <View style={styles.replyIndicatorContent}>
-            <Text style={styles.replyIndicatorText} numberOfLines={1}>
-              Respondiendo a {replyingTo.authorName || "Usuario"}
-            </Text>
-            <TouchableOpacity onPress={handleCancelReply}>
-              <IconButton icon="close" size={16} iconColor="#6b7280" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.inputWrapper}>
-        <TextInput
-          style={styles.input}
-          placeholder={
-            replyingTo ? "Escribe tu respuesta..." : "Escribe un comentario..."
-          }
-          placeholderTextColor="#9ca3af"
-          value={newComment}
-          onChangeText={setNewComment}
-          multiline
-          maxLength={1000}
-          blurOnSubmit={false}
-          onSubmitEditing={handleSubmitComment}
-          editable={!!currentUser && !addingComment}
-          returnKeyType="send"
-        />
-
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!newComment.trim() || addingComment || !currentUser) &&
-              styles.sendButtonDisabled,
-          ]}
-          onPress={handleSubmitComment}
-          disabled={!newComment.trim() || addingComment || !currentUser}
-        >
-          {addingComment ? (
-            <IconButton icon="loading" size={20} iconColor="#9ca3af" />
-          ) : (
-            <IconButton icon="send" size={20} iconColor="#3b82f6" />
-          )}
+      <View style={styles.headerLeft}>
+        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <IconButton icon="close" size={24} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Comentarios</Text>
+      </View>
+      <View style={styles.headerRight}>
+        <View style={styles.headerStats}>
+          <Text style={styles.commentCount}>
+            {comments.length || 0}{" "}
+            {comments.length === 1 ? "comentario" : "comentarios"}
+          </Text>
+        </View>
       </View>
     </View>
   );
 
+  // Renderizar indicador de respuesta
+  const renderReplyIndicator = () => {
+    if (!replyToComment) return null;
+
+    return (
+      <View style={styles.replyIndicator}>
+        <View style={styles.replyIndicatorContent}>
+          <IconButton icon="reply" size={16} iconColor="#3b82f6" />
+          <Text style={styles.replyIndicatorText} numberOfLines={1}>
+            Respondiendo a: {replyToComment.authorName || "usuario"}
+          </Text>
+          <TouchableOpacity onPress={handleCancelReply}>
+            <IconButton icon="close" size={16} iconColor="#6b7280" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Renderizar input para comentar
+  const renderCommentInput = () => {
+    if (!currentUser) {
+      return (
+        <View style={styles.loginPrompt}>
+          <IconButton icon="account" size={20} iconColor="#6b7280" />
+          <Text style={styles.loginPromptText}>
+            Inicia sesión para comentar
+          </Text>
+        </View>
+      );
+    }
+
+    if (!permissions.canComment) {
+      return (
+        <View style={styles.unverifiedPrompt}>
+          <IconButton icon="alert-circle" size={20} iconColor="#f59e0b" />
+          <View style={styles.unverifiedContent}>
+            <Text style={styles.unverifiedTitle}>Usuario no verificado</Text>
+            <Text style={styles.unverifiedText}>
+              Solo usuarios verificados pueden comentar
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.inputContainer}>
+        {renderReplyIndicator()}
+        <View style={styles.inputRow}>
+          <TextInput
+            ref={inputRef}
+            style={styles.commentInput}
+            placeholder={
+              replyToComment
+                ? `Escribe tu respuesta a ${
+                    replyToComment.authorName || "este comentario"
+                  }...`
+                : "Escribe un comentario..."
+            }
+            placeholderTextColor="#9ca3af"
+            value={commentInput}
+            onChangeText={setCommentInput}
+            multiline
+            maxLength={500}
+            editable={!isSubmitting}
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              // Enviar al presionar "enter" en iOS/Android
+              if (commentInput.trim() && !isSubmitting) {
+                handleSubmitComment();
+              }
+            }}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!commentInput.trim() || isSubmitting) &&
+                styles.sendButtonDisabled,
+            ]}
+            onPress={handleSubmitComment}
+            disabled={!commentInput.trim() || isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size={20} color="#ffffff" />
+            ) : (
+              <IconButton icon="send" size={20} iconColor="#ffffff" />
+            )}
+          </TouchableOpacity>
+        </View>
+        <View style={styles.inputFooter}>
+          <Text style={styles.charCount}>
+            {commentInput.length}/500 caracteres
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  // Renderizar contenido de comentarios
+  const renderCommentsContent = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Cargando comentarios...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <IconButton icon="alert-circle" size={48} iconColor="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (comments.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <IconButton icon="comment-outline" size={64} iconColor="#cbd5e1" />
+          <Text style={styles.emptyTitle}>No hay comentarios aún</Text>
+          <Text style={styles.emptyText}>
+            Sé el primero en comentar esta publicación
+          </Text>
+          {permissions.canComment && (
+            <TouchableOpacity
+              style={styles.firstCommentButton}
+              onPress={() => {
+                if (inputRef.current) {
+                  inputRef.current.focus();
+                }
+              }}
+            >
+              <Text style={styles.firstCommentButtonText}>
+                Escribir primer comentario
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+
+    return (
+      <CommentList
+        comments={comments}
+        postId={post?.id}
+        onReply={handleReplyToComment}
+        onCommentDeleted={onCommentDeleted}
+        scrollViewRef={scrollViewRef}
+      />
+    );
+  };
+
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent={true}
-      statusBarTranslucent={true}
       onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
+      {/* KeyboardAvoidingView ENVUELVE TODO */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={
-          Platform.OS === "ios" ? 0 : StatusBar.currentHeight
-        }
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View style={styles.modalOverlay}>
-          <TouchableWithoutFeedback onPress={onClose}>
-            <View style={styles.overlayTouchable} />
+        <View style={styles.safeArea}>
+          {/* Overlay que NO cierra al tocar el teclado */}
+          <TouchableWithoutFeedback
+            onPress={handleOverlayPress}
+            accessible={false}
+          >
+            <View style={styles.overlay} />
           </TouchableWithoutFeedback>
 
-          <View
-            style={[
-              styles.modalContainer,
-              { maxHeight: Dimensions.get("window").height * 0.85 },
-            ]}
+          {/* Contenedor del modal animado */}
+          <Animated.View
+            ref={modalContentRef}
+            style={[styles.modalContent, { height: modalHeight }]}
           >
+            {/* Indicador de arrastre */}
+            <View style={styles.dragIndicator} />
+
+            {/* Header */}
             {renderHeader()}
 
-            <FlatList
-              ref={flatListRef}
-              data={comments}
-              renderItem={renderComment}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.commentsList}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              onEndReached={hasMore ? loadMoreComments : null}
-              onEndReachedThreshold={0.5}
-              ListEmptyComponent={
-                !loading && (
-                  <View style={styles.emptyState}>
-                    <IconButton
-                      icon="comment-outline"
-                      size={48}
-                      iconColor="#d1d5db"
-                    />
-                    <Text style={styles.emptyStateText}>
-                      Sé el primero en comentar
-                    </Text>
-                  </View>
-                )
-              }
-              ListFooterComponent={
-                loading ? (
-                  <View style={styles.loadingFooter}>
-                    <IconButton icon="loading" size={24} iconColor="#3b82f6" />
-                  </View>
-                ) : null
-              }
-            />
+            {/* Contenido principal */}
+            <View style={styles.mainContent}>
+              {/* Lista de comentarios */}
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.commentsScrollView}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.scrollContent}
+              >
+                {renderCommentsContent()}
+              </ScrollView>
 
-            {renderInput()}
-          </View>
+              {/* Input para comentar - FIJO en la parte inferior */}
+              <View
+                style={[
+                  styles.inputWrapper,
+                  keyboardVisible &&
+                    Platform.OS === "android" &&
+                    styles.inputWrapperAndroidKeyboard,
+                ]}
+              >
+                {renderCommentInput()}
+              </View>
+            </View>
+          </Animated.View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 };
 
-// Agrega esta importación al inicio si no la tienes
-import { Dimensions } from "react-native";
-
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
+  safeArea: {
     flex: 1,
+    backgroundColor: "transparent",
   },
-  modalOverlay: {
+  overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
   },
-  overlayTouchable: {
-    flex: 1,
-  },
-  modalContainer: {
+  modalContent: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  mainContent: {
+    flex: 1,
+  },
+  dragIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#d1d5db",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 8,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
   },
-  title: {
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  closeButton: {
+    marginRight: 12,
+  },
+  headerTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: "#1f2937",
   },
-  closeButton: {
-    padding: 4,
+  headerRight: {
+    marginLeft: 12,
   },
-  commentsList: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  emptyState: {
+  headerStats: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
   },
-  emptyStateText: {
-    fontSize: 16,
-    color: "#9ca3af",
-    marginTop: 12,
+  commentCount: {
+    fontSize: 14,
+    color: "#6b7280",
     fontWeight: "500",
+    marginRight: 8,
   },
-  loadingFooter: {
+  mobileLimit: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  inputContainer: {
+  limitText: {
+    fontSize: 12,
+    color: "#3b82f6",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+  commentsScrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100,
+    paddingHorizontal: 16,
+  },
+  inputWrapper: {
     backgroundColor: "#ffffff",
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
+    paddingBottom: Platform.OS === "ios" ? 0 : 8,
+  },
+  inputWrapperAndroidKeyboard: {
+    paddingBottom: 20,
+  },
+  inputContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === "ios" ? 20 : 12,
+    paddingVertical: 12,
   },
   replyIndicator: {
-    backgroundColor: "#f0f9ff",
-    borderRadius: 8,
+    backgroundColor: "#eff6ff",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    marginBottom: 12,
+    borderRadius: 8,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#e0f2fe",
+    borderColor: "#dbeafe",
   },
   replyIndicatorContent: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
   replyIndicatorText: {
-    fontSize: 14,
-    color: "#0ea5e9",
+    fontSize: 13,
+    color: "#3b82f6",
     fontWeight: "500",
     flex: 1,
-    marginRight: 8,
+    marginLeft: 8,
   },
-  inputWrapper: {
+  inputRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     backgroundColor: "#f9fafb",
     borderRadius: 24,
     paddingHorizontal: 16,
@@ -339,21 +588,147 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e7eb",
   },
-  input: {
+  commentInput: {
     flex: 1,
-    fontSize: 16,
-    color: "#374151",
+    fontSize: 14,
+    color: "#1f2937",
     maxHeight: 100,
-    minHeight: 40,
     paddingVertical: 8,
-    textAlignVertical: "center",
+    minHeight: 40,
   },
   sendButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#3b82f6",
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 8,
   },
   sendButtonDisabled: {
-    opacity: 0.5,
+    backgroundColor: "#93c5fd",
+  },
+  inputFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  charCount: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  mobileNote: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  mobileNoteText: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginLeft: 4,
+  },
+  loginPrompt: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+  },
+  loginPromptText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontWeight: "500",
+    marginLeft: 8,
+  },
+  unverifiedPrompt: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    backgroundColor: "#fef3c7",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  unverifiedContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  unverifiedTitle: {
+    fontSize: 14,
+    color: "#92400e",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  unverifiedText: {
+    fontSize: 13,
+    color: "#92400e",
+    fontWeight: "500",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#ef4444",
+    textAlign: "center",
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  retryButtonText: {
+    color: "#ffffff",
+    fontWeight: "500",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  firstCommentButton: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  firstCommentButtonText: {
+    color: "#ffffff",
+    fontWeight: "600",
   },
 });
 

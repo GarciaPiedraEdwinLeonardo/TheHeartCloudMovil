@@ -34,6 +34,7 @@ const CommentCard = ({
   onReply,
   onCommentDeleted,
   isReply = false,
+  depth = 0,
 }) => {
   const [showPopover, setShowPopover] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -110,6 +111,12 @@ const CommentCard = ({
       setNeedsExpansion(contentHeight > maxHeight);
     }
   }, [contentHeight]);
+
+  // Verificar si se puede responder (máximo 2 niveles)
+  const canReplyBasedOnDepth = () => {
+    // Límite para móvil: 2 niveles (0 = raíz, 1 = primera respuesta, 2 = segunda respuesta)
+    return depth < 1; // depth 0 y 1 pueden tener respuestas, depth 2 no
+  };
 
   // Obtener nombre del autor
   const getAuthorName = () => {
@@ -188,6 +195,15 @@ const CommentCard = ({
 
   // Manejar clic en responder
   const handleReply = () => {
+    if (!canReplyBasedOnDepth()) {
+      Alert.alert(
+        "Límite alcanzado",
+        "En la versión móvil solo se permiten 2 niveles de respuestas por hilo.",
+        [{ text: "Entendido" }]
+      );
+      return;
+    }
+
     if (onReply) {
       onReply(comment);
     }
@@ -268,7 +284,7 @@ const CommentCard = ({
     const isAuthor = currentUser.uid === comment.authorId;
     const canEdit = isAuthor;
     const canDelete = isAuthor;
-    const canReply = true;
+    const canReply = canReplyBasedOnDepth();
 
     return {
       isAuthor,
@@ -415,7 +431,7 @@ const CommentCard = ({
         )}
       </TouchableOpacity>
 
-      {/* Reply button */}
+      {/* Reply button - Solo si tiene permiso y está dentro del límite de profundidad */}
       {permissions.canReply && (
         <TouchableOpacity style={styles.actionButton} onPress={handleReply}>
           <IconButton icon="reply" size={18} iconColor="#6b7280" />
@@ -436,6 +452,14 @@ const CommentCard = ({
 
           {/* Renderizar popover si está activo */}
           {renderPopover()}
+        </View>
+      )}
+
+      {/* Indicador de límite de profundidad */}
+      {depth >= 1 && !canReplyBasedOnDepth() && (
+        <View style={styles.depthWarning}>
+          <IconButton icon="information" size={14} iconColor="#f59e0b" />
+          <Text style={styles.depthWarningText}>Límite de respuestas</Text>
         </View>
       )}
     </View>
@@ -636,6 +660,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#f3f4f6",
+    flexWrap: "wrap",
   },
   actionButton: {
     flexDirection: "row",
@@ -663,6 +688,23 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     padding: 4,
+  },
+  depthWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
+    alignSelf: "flex-start",
+    marginLeft: "auto",
+  },
+  depthWarningText: {
+    fontSize: 11,
+    color: "#92400e",
+    fontWeight: "500",
+    marginLeft: 4,
   },
 
   // Estilos para el Popover

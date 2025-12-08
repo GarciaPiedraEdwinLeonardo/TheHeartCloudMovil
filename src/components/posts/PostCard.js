@@ -439,9 +439,6 @@ const PostCard = ({
                 onPress={handleCommentClick}
               >
                 <IconButton icon="comment" size={20} iconColor="#6b7280" />
-                {commentCount > 0 && (
-                  <Text style={styles.commentCount}>{commentCount}</Text>
-                )}
               </TouchableOpacity>
             </View>
           </View>

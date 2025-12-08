@@ -67,7 +67,31 @@ export const useCommentActions = () => {
     };
   };
 
-  // Crear nuevo comentario
+  // Función para calcular profundidad de un comentario
+  const calculateCommentDepth = async (commentId) => {
+    let depth = 0;
+    let currentCommentId = commentId;
+
+    while (currentCommentId) {
+      const commentRef = doc(db, "comments", currentCommentId);
+      const commentDoc = await getDoc(commentRef);
+
+      if (!commentDoc.exists()) break;
+
+      const commentData = commentDoc.data();
+
+      if (commentData.parentCommentId) {
+        depth++;
+        currentCommentId = commentData.parentCommentId;
+      } else {
+        break;
+      }
+    }
+
+    return depth;
+  };
+
+  // Crear nuevo comentario CON VALIDACIÓN DE PROFUNDIDAD PARA MÓVIL
   const createComment = async (commentData) => {
     try {
       setLoading(true);
@@ -81,6 +105,22 @@ export const useCommentActions = () => {
 
       if (!["doctor", "moderator", "admin"].includes(userData?.role)) {
         throw new Error("Solo usuarios verificados pueden comentar");
+      }
+
+      // VALIDACIÓN DE PROFUNDIDAD PARA MÓVIL
+      if (commentData.parentCommentId) {
+        // Calcular profundidad del comentario padre
+        const parentDepth = await calculateCommentDepth(
+          commentData.parentCommentId
+        );
+
+        // Límite para móvil: 2 niveles (0 = raíz, 1 = primera respuesta, 2 = segunda respuesta)
+        // Si el padre ya está en nivel 1 (depth = 1), no permitir más respuestas
+        if (parentDepth >= 1) {
+          throw new Error(
+            "En la versión móvil solo se permiten 2 niveles de respuestas por hilo. No puedes responder a este comentario."
+          );
+        }
       }
 
       const newComment = {
@@ -364,6 +404,16 @@ export const useCommentActions = () => {
     }
   };
 
+  // Obtener profundidad de un comentario
+  const getCommentDepth = async (commentId) => {
+    try {
+      return await calculateCommentDepth(commentId);
+    } catch (error) {
+      console.error("Error calculando profundidad del comentario:", error);
+      return 0;
+    }
+  };
+
   return {
     createComment,
     editComment,
@@ -371,6 +421,7 @@ export const useCommentActions = () => {
     deleteCommentWithReplies,
     likeComment,
     getCommentAuthor,
+    getCommentDepth,
     loading,
     error,
     clearError: () => setError(null),

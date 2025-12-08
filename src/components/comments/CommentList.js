@@ -19,7 +19,10 @@ const CommentList = ({
   const [expandedThreads, setExpandedThreads] = useState(new Set());
   const [showAllReplies, setShowAllReplies] = useState(new Set());
 
-  // Organizar comentarios en estructura jerárquica
+  // Límite de profundidad para móvil (2 niveles)
+  const MAX_DEPTH = 2;
+
+  // Organizar comentarios en estructura jerárquica con límite de profundidad
   const organizedComments = useMemo(() => {
     const commentMap = new Map();
     const rootComments = [];
@@ -31,22 +34,49 @@ const CommentList = ({
         replies: [],
         replyCount: 0,
         depth: 0,
+        canReply: true,
       });
     });
 
-    // Luego, construir la jerarquía
+    // Calcular profundidad de cada comentario y construir jerarquía
     comments.forEach((comment) => {
       const commentNode = commentMap.get(comment.id);
 
+      // Calcular profundidad real
+      let depth = 0;
+      let currentId = comment.parentCommentId;
+
+      while (currentId) {
+        depth++;
+        const parent = commentMap.get(currentId);
+        if (!parent) break;
+        currentId = parent.parentCommentId;
+      }
+
+      commentNode.depth = depth;
+
+      // Determinar si se puede responder (basado en profundidad)
+      commentNode.canReply = depth < MAX_DEPTH - 1;
+
       if (comment.parentCommentId) {
         const parent = commentMap.get(comment.parentCommentId);
-        if (parent) {
+        if (parent && depth < MAX_DEPTH) {
           parent.replies.push(commentNode);
           parent.replyCount = (parent.replyCount || 0) + 1;
-          commentNode.depth = parent.depth + 1;
         }
       } else {
         rootComments.push(commentNode);
+      }
+    });
+
+    // Ordenar respuestas por fecha (más recientes primero)
+    commentMap.forEach((comment) => {
+      if (comment.replies.length > 0) {
+        comment.replies.sort((a, b) => {
+          const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+          return dateA - dateB; // Ascendente (más antiguos primero)
+        });
       }
     });
 
@@ -117,9 +147,9 @@ const CommentList = ({
       return null;
     }
 
-    // Calcular margen izquierdo
-    const maxDepth = 4;
-    const effectiveDepth = Math.min(depth, maxDepth);
+    // Calcular margen izquierdo con límite visual
+    const maxVisualDepth = 4;
+    const effectiveDepth = Math.min(depth, maxVisualDepth);
     const marginLeft = effectiveDepth * 16;
 
     // Para respuestas anidadas, mostrar máximo 2 inicialmente
@@ -137,9 +167,10 @@ const CommentList = ({
         <CommentCard
           comment={comment}
           postId={postId}
-          onReply={onReply}
+          onReply={comment.canReply ? onReply : null}
           onCommentDeleted={onCommentDeleted}
           isReply={depth > 0}
+          depth={depth}
         />
 
         {/* Controles de hilo */}
@@ -161,6 +192,16 @@ const CommentList = ({
                 </Text>
               </View>
             </TouchableOpacity>
+
+            {/* Indicador de límite de profundidad */}
+            {comment.depth >= MAX_DEPTH - 1 && hasReplies && (
+              <View style={styles.depthWarning}>
+                <IconButton icon="information" size={14} iconColor="#f59e0b" />
+                <Text style={styles.depthWarningText}>
+                  Límite de respuestas alcanzado
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -221,20 +262,29 @@ const CommentList = ({
     );
   }
 
+  // Contar total de comentarios visibles (dentro del límite de profundidad)
+  const visibleCommentsCount = comments.length;
+
   return (
     <View style={styles.container}>
       {/* Encabezado de estadísticas */}
       <View style={styles.statsHeader}>
-        <Text style={styles.statsText}>
-          {comments.length}{" "}
-          {comments.length === 1 ? "comentario" : "comentarios"}
-        </Text>
-        {organizedComments.length > 0 && (
-          <Text style={styles.threadsText}>
-            {organizedComments.length}{" "}
-            {organizedComments.length === 1 ? "hilo" : "hilos"}
+        <View style={styles.statsLeft}>
+          <Text style={styles.statsText}>
+            {visibleCommentsCount}{" "}
+            {visibleCommentsCount === 1 ? "comentario" : "comentarios"}
           </Text>
-        )}
+          {organizedComments.length > 0 && (
+            <Text style={styles.threadsText}>
+              {organizedComments.length}{" "}
+              {organizedComments.length === 1 ? "hilo" : "hilos"}
+            </Text>
+          )}
+        </View>
+        <View style={styles.limitIndicator}>
+          <IconButton icon="cellphone" size={14} iconColor="#6b7280" />
+          <Text style={styles.limitText}>Límite: {MAX_DEPTH} niveles</Text>
+        </View>
       </View>
 
       {/* Lista de comentarios */}
@@ -290,6 +340,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
+  statsLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   statsText: {
     fontSize: 14,
     fontWeight: "600",
@@ -299,6 +353,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     fontWeight: "500",
+    marginLeft: 12,
+    backgroundColor: "#e5e7eb",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  limitIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  limitText: {
+    fontSize: 12,
+    color: "#3b82f6",
+    fontWeight: "500",
+    marginLeft: 4,
   },
   scrollView: {
     flex: 1,
@@ -340,6 +413,22 @@ const styles = StyleSheet.create({
   threadToggleText: {
     fontSize: 12,
     color: "#3b82f6",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+  depthWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
+    alignSelf: "flex-start",
+  },
+  depthWarningText: {
+    fontSize: 11,
+    color: "#92400e",
     fontWeight: "500",
     marginLeft: 4,
   },
