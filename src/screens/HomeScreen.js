@@ -157,7 +157,52 @@ const HomeScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
+    const checkSuspension = async () => {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+
+          // Verificar suspensión
+          if (userData.suspension?.isSuspended) {
+            const endDate = userData.suspension.endDate?.toDate();
+            const now = new Date();
+
+            // Si la suspensión expiró, limpiarla
+            if (endDate && now >= endDate) {
+              try {
+                await updateDoc(doc(db, "users", currentUser.uid), {
+                  "suspension.isSuspended": false,
+                  "suspension.reason": null,
+                  "suspension.startDate": null,
+                  "suspension.endDate": null,
+                  "suspension.suspendedBy": null,
+                  "suspension.autoRemovedAt": serverTimestamp(),
+                });
+
+                // Recargar datos
+                const updatedDoc = await getDoc(
+                  doc(db, "users", currentUser.uid)
+                );
+                if (updatedDoc.exists()) {
+                  setUserData(updatedDoc.data());
+                }
+              } catch (error) {
+                console.error("Error limpiando suspensión:", error);
+              }
+            } else {
+              // Si está suspendido, navegar a la pantalla de suspensión
+              navigation.replace("Suspended", { userData: userData });
+              return;
+            }
+          }
+        }
+      }
+    };
+
     loadAllData();
+    checkSuspension();
   }, []);
 
   const onRefresh = () => {

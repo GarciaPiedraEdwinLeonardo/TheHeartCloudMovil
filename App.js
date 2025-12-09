@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "./src/config/firebase";
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
 import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
@@ -10,6 +12,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import ForumScreen from "./src/screens/ForumScreen";
 import SearchScreen from "./src/screens/SearchScreen";
+import SuspendedScreen from "./src/screens/SuspendedScreen";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./src/config/firebase";
 import { View, Text, ActivityIndicator } from "react-native";
@@ -20,14 +23,17 @@ const Stack = createNativeStackNavigator();
 function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [checkingVerification, setCheckingVerification] = useState(false);
+  const [checkingSuspension, setCheckingSuspension] = useState(true);
+  const [isSuspended, setIsSuspended] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
           // Verificar si el email está confirmado
-          await firebaseUser.reload(); // Recargar datos del usuario
+          await firebaseUser.reload();
           const currentUser = auth.currentUser;
 
           if (!currentUser.emailVerified) {
@@ -35,24 +41,88 @@ function App() {
             console.log("Usuario no verificado, cerrando sesión...");
             await auth.signOut();
             setUser(null);
+            setUserData(null);
             setCheckingVerification(false);
+            setCheckingSuspension(false);
           } else {
-            // Email verificado - Permitir acceso
-            console.log("Usuario verificado, permitiendo acceso...");
+            // Email verificado - Verificar suspensión
+            console.log("Usuario verificado, verificando suspensión...");
             setUser(currentUser);
             setCheckingVerification(false);
+
+            // Cargar datos del usuario para verificar suspensión
+            try {
+              const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                setUserData(userData);
+
+                // Verificar suspensión
+                if (userData.suspension?.isSuspended) {
+                  const endDate = userData.suspension.endDate?.toDate();
+                  const now = new Date();
+
+                  // Si la suspensión expiró, limpiarla automáticamente
+                  if (endDate && now >= endDate) {
+                    console.log(
+                      "Suspensión expirada - limpiando automáticamente"
+                    );
+                    await updateDoc(doc(db, "users", currentUser.uid), {
+                      "suspension.isSuspended": false,
+                      "suspension.reason": null,
+                      "suspension.startDate": null,
+                      "suspension.endDate": null,
+                      "suspension.suspendedBy": null,
+                      "suspension.autoRemovedAt": serverTimestamp(),
+                    });
+
+                    // Recargar datos
+                    const updatedDoc = await getDoc(
+                      doc(db, "users", currentUser.uid)
+                    );
+                    if (updatedDoc.exists()) {
+                      const updatedUserData = updatedDoc.data();
+                      setUserData(updatedUserData);
+                      setIsSuspended(false);
+                    }
+                  } else {
+                    // Usuario suspendido
+                    console.log(
+                      "Usuario suspendido, mostrando pantalla de suspensión"
+                    );
+                    setIsSuspended(true);
+                  }
+                } else {
+                  console.log("Usuario no suspendido, permitiendo acceso");
+                  setIsSuspended(false);
+                }
+              }
+            } catch (error) {
+              console.error("Error cargando datos del usuario:", error);
+              setIsSuspended(false);
+            } finally {
+              setCheckingSuspension(false);
+            }
           }
         } else {
           // No hay usuario autenticado
+          console.log("No hay usuario autenticado");
           setUser(null);
+          setUserData(null);
+          setIsSuspended(false);
           setCheckingVerification(false);
+          setCheckingSuspension(false);
         }
       } catch (error) {
         console.error("Error verificando estado de autenticación:", error);
         setUser(null);
+        setUserData(null);
+        setIsSuspended(false);
         setCheckingVerification(false);
+        setCheckingSuspension(false);
       } finally {
         if (initializing) {
+          console.log("Inicialización completada");
           setInitializing(false);
         }
       }
@@ -61,35 +131,79 @@ function App() {
     return unsubscribe;
   }, [initializing]);
 
-  // Si está verificando el estado de verificación, mostrar loading
-  if (checkingVerification) {
+  // Mostrar loading mientras verifica
+  if (checkingVerification || checkingSuspension || initializing) {
+    console.log("Mostrando loading...");
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color="#3b82f6" />
         <Text style={{ marginTop: 10, color: "#6b7280" }}>
-          Verificando estado de cuenta...
+          {checkingVerification
+            ? "Verificando estado de cuenta..."
+            : checkingSuspension
+            ? "Verificando estado de suspensión..."
+            : "Cargando..."}
         </Text>
       </View>
     );
   }
 
-  // Loading inicial
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={{ marginTop: 10, color: "#6b7280" }}>Cargando...</Text>
-      </View>
-    );
-  }
+  console.log("Estado actual:", {
+    user: !!user,
+    isSuspended,
+    userData: !!userData,
+  });
 
+  // Renderizar pantallas según estado
   return (
     <PaperProvider>
       <AuthProvider>
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {user ? (
-              // Usuario autenticado Y VERIFICADO - Pantallas principales
+            {!user ? (
+              // Usuario NO autenticado - mostrar pantallas de autenticación
+              // Esto incluye cuando el usuario cierra sesión desde SuspendedScreen
+              <>
+                <Stack.Screen
+                  name="Login"
+                  component={LoginScreen}
+                  initialParams={{ verificationRequired: false }}
+                />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+                <Stack.Screen
+                  name="ForgotPassword"
+                  component={ForgotPasswordScreen}
+                />
+                <Stack.Screen
+                  name="VerificationSent"
+                  component={VerificationSentScreen}
+                />
+                <Stack.Screen
+                  name="Suspended"
+                  component={SuspendedScreen}
+                  options={{ gestureEnabled: false }}
+                />
+              </>
+            ) : isSuspended ? (
+              // Usuario autenticado pero SUSPENDIDO
+              // Solo mostrar pantalla de suspensión
+              <Stack.Screen name="Suspended">
+                {(props) => (
+                  <SuspendedScreen
+                    {...props}
+                    userData={userData}
+                    onLogoutSuccess={() => {
+                      // Cuando se cierra sesión exitosamente
+                      setUser(null);
+                      setUserData(null);
+                      setIsSuspended(false);
+                    }}
+                  />
+                )}
+              </Stack.Screen>
+            ) : (
+              // Usuario autenticado, VERIFICADO y NO SUSPENDIDO
+              // Mostrar pantallas principales
               <>
                 <Stack.Screen name="Home" component={HomeScreen} />
                 <Stack.Screen
@@ -113,23 +227,11 @@ function App() {
                     animation: "slide_from_bottom",
                   }}
                 />
-              </>
-            ) : (
-              // Usuario NO autenticado o NO verificado - Pantallas de autenticación
-              <>
+                {/* Agregar pantalla de suspensión para navegación interna */}
                 <Stack.Screen
-                  name="Login"
-                  component={LoginScreen}
-                  initialParams={{ verificationRequired: false }}
-                />
-                <Stack.Screen name="Register" component={RegisterScreen} />
-                <Stack.Screen
-                  name="ForgotPassword"
-                  component={ForgotPasswordScreen}
-                />
-                <Stack.Screen
-                  name="VerificationSent"
-                  component={VerificationSentScreen}
+                  name="Suspended"
+                  component={SuspendedScreen}
+                  options={{ gestureEnabled: false }}
                 />
               </>
             )}
