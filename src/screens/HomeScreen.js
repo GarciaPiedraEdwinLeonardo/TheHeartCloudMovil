@@ -168,7 +168,6 @@ const HomeScreen = ({ navigation }) => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      navigation.replace("Login");
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
       Alert.alert("Error", "No se pudo cerrar sesión. Intenta de nuevo.");
