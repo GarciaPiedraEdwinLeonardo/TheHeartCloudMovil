@@ -32,21 +32,46 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
-          // Verificar si el email está confirmado
+          // Recargar información del usuario
           await firebaseUser.reload();
           const currentUser = auth.currentUser;
 
-          if (!currentUser.emailVerified) {
-            // Email no verificado - Cerrar sesión automáticamente
-            console.log("Usuario no verificado, cerrando sesión...");
+          // 🔥 VERIFICACIÓN CRÍTICA: Asegurar que currentUser existe 🔥
+          if (!currentUser) {
+            console.log(
+              "Usuario no disponible después de reload, limpiando estado..."
+            );
+            setUser(null);
+            setUserData(null);
+            setIsSuspended(false);
+            setCheckingVerification(false);
+            setCheckingSuspension(false);
+            return;
+          }
+
+          // 🔥 Obtener proveedores del usuario (solo si currentUser existe) 🔥
+          const providerData = currentUser.providerData || [];
+          const isGoogleUser = providerData.some(
+            (provider) => provider.providerId === "google.com"
+          );
+
+          // 🔥 SOLUCIÓN CORREGIDA: Solo requerir verificación para usuarios NO de Google 🔥
+          // Usuarios de Google pueden acceder sin verificación de email
+          if (!currentUser.emailVerified && !isGoogleUser) {
+            // Email no verificado y NO es de Google - Cerrar sesión automáticamente
+            console.log(
+              "Usuario no verificado (no Google), cerrando sesión..."
+            );
             await auth.signOut();
             setUser(null);
             setUserData(null);
             setCheckingVerification(false);
             setCheckingSuspension(false);
           } else {
-            // Email verificado - Verificar suspensión
-            console.log("Usuario verificado, verificando suspensión...");
+            // Email verificado o es usuario de Google - continuar con el flujo
+            console.log(
+              "Usuario verificado o es de Google, verificando suspensión..."
+            );
             setUser(currentUser);
             setCheckingVerification(false);
 
@@ -67,26 +92,33 @@ function App() {
                     console.log(
                       "Suspensión expirada - limpiando automáticamente"
                     );
-                    await updateDoc(doc(db, "users", currentUser.uid), {
-                      "suspension.isSuspended": false,
-                      "suspension.reason": null,
-                      "suspension.startDate": null,
-                      "suspension.endDate": null,
-                      "suspension.suspendedBy": null,
-                      "suspension.autoRemovedAt": serverTimestamp(),
-                    });
+                    try {
+                      await updateDoc(doc(db, "users", currentUser.uid), {
+                        "suspension.isSuspended": false,
+                        "suspension.reason": null,
+                        "suspension.startDate": null,
+                        "suspension.endDate": null,
+                        "suspension.suspendedBy": null,
+                        "suspension.autoRemovedAt": serverTimestamp(),
+                      });
 
-                    // Recargar datos
-                    const updatedDoc = await getDoc(
-                      doc(db, "users", currentUser.uid)
-                    );
-                    if (updatedDoc.exists()) {
-                      const updatedUserData = updatedDoc.data();
-                      setUserData(updatedUserData);
-                      setIsSuspended(false);
+                      // Recargar datos actualizados
+                      const updatedDoc = await getDoc(
+                        doc(db, "users", currentUser.uid)
+                      );
+                      if (updatedDoc.exists()) {
+                        const updatedUserData = updatedDoc.data();
+                        setUserData(updatedUserData);
+                        setIsSuspended(false);
+                      }
+                    } catch (updateError) {
+                      console.error(
+                        "Error actualizando suspensión:",
+                        updateError
+                      );
                     }
                   } else {
-                    // Usuario suspendido
+                    // Usuario suspendido activamente
                     console.log(
                       "Usuario suspendido, mostrando pantalla de suspensión"
                     );
@@ -96,6 +128,9 @@ function App() {
                   console.log("Usuario no suspendido, permitiendo acceso");
                   setIsSuspended(false);
                 }
+              } else {
+                console.log("Documento de usuario no encontrado en Firestore");
+                setIsSuspended(false);
               }
             } catch (error) {
               console.error("Error cargando datos del usuario:", error);
@@ -148,7 +183,7 @@ function App() {
     );
   }
 
-  console.log("Estado actual:", {
+  console.log("Estado actual de App:", {
     user: !!user,
     isSuspended,
     userData: !!userData,
@@ -164,11 +199,7 @@ function App() {
               // Usuario NO autenticado - mostrar pantallas de autenticación
               // Esto incluye cuando el usuario cierra sesión desde SuspendedScreen
               <>
-                <Stack.Screen
-                  name="Login"
-                  component={LoginScreen}
-                  initialParams={{ verificationRequired: false }}
-                />
+                <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Register" component={RegisterScreen} />
                 <Stack.Screen
                   name="ForgotPassword"
@@ -202,7 +233,7 @@ function App() {
                 )}
               </Stack.Screen>
             ) : (
-              // Usuario autenticado, VERIFICADO y NO SUSPENDIDO
+              // Usuario autenticado, VERIFICADO o es de Google y NO SUSPENDIDO
               // Mostrar pantallas principales
               <>
                 <Stack.Screen name="Home" component={HomeScreen} />

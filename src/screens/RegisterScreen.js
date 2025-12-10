@@ -13,7 +13,15 @@ import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
 } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  getDocs,
+  collection,
+  query,
+  where,
+  deleteDoc,
+} from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { TextInput, Button, Card, IconButton } from "react-native-paper";
@@ -76,6 +84,39 @@ const RegisterScreen = ({ navigation }) => {
     return !error;
   };
 
+  // Limpiar usuario no verificado existente (igual que en la web)
+  const cleanupExistingUnverifiedUser = async (email) => {
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(
+        usersRef,
+        where("email", "==", email),
+        where("emailVerified", "==", false)
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        const userData = userDoc.data();
+        const now = new Date();
+        const lastSent = userData.emailVerificationSentAt?.toDate();
+
+        // Verificar si se envió recientemente (menos de 1 hora)
+        if (lastSent && now - lastSent < 60 * 60 * 1000) {
+          throw new Error(
+            "Ya se envió un email de verificación recientemente. Revisa tu bandeja de entrada y espera al menos 1 hora."
+          );
+        }
+
+        // Eliminar el usuario no verificado existente
+        await deleteDoc(doc(db, "users", userDoc.id));
+      }
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const handleEmailRegister = async () => {
     setLoading(true);
     const isEmailValid = validateField("email", formData.email);
@@ -90,7 +131,18 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
+    // Validar que coinciden las contraseñas
+    if (formData.password !== formData.confirmPassword) {
+      Alert.alert("Error", "Las contraseñas no coinciden.");
+      setLoading(false);
+      return;
+    }
+
     try {
+      // PASO 1: Limpiar usuario no verificado existente ANTES de crear uno nuevo
+      await cleanupExistingUnverifiedUser(formData.email);
+
+      // PASO 2: Crear nuevo usuario
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
@@ -98,24 +150,58 @@ const RegisterScreen = ({ navigation }) => {
       );
       const user = userCredential.user;
 
+      // PASO 3: Enviar email de verificación
       await sendEmailVerification(user);
 
-      const expiresAt = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+      // PASO 4: Calcular fecha de expiración (24 horas)
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 horas
 
+      // 🔥 **ESTRUCTURA DE DATOS COMPATIBLE CON LA WEB** 🔥
       await setDoc(doc(db, "users", user.uid), {
         id: user.uid,
         email: user.email,
+        name: null,
         role: "unverified",
-        stats: { aura: 0, contributionCount: 0, postCount: 0, commentCount: 0 },
+        profileMedia: null,
+        professionalInfo: null,
+        stats: {
+          aura: 0,
+          contributionCount: 0,
+          postCount: 0,
+          commentCount: 0,
+          forumCount: 0,
+          joinedForumsCount: 0,
+          totalImagesUploaded: 0,
+          totalStorageUsed: 0,
+        },
+        suspension: {
+          isSuspended: false,
+          reason: null,
+          startDate: null,
+          endDate: null,
+          suspendedBy: null,
+        },
+        joinedForums: [],
         joinDate: new Date(),
+        lastLogin: new Date(),
+        isActive: true,
+        isDeleted: false,
+        deletedAt: null,
         emailVerified: false,
         emailVerificationSentAt: new Date(),
-        verificationExpiresAt: expiresAt,
+        verificationExpiresAt: expiresAt, // Expira en 24 horas
+        verificationAttempts: 1,
+        hasPassword: true, // IMPORTANTE: Indicar que tiene contraseña
       });
 
+      // PASO 5: Cerrar sesión automáticamente (igual que en la web)
       await auth.signOut();
+
+      // PASO 6: Navegar a pantalla de verificación enviada
       navigation.navigate("VerificationSent", { email: formData.email });
     } catch (error) {
+      console.error("Registration error:", error);
       Alert.alert("Error", getErrorMessage(error.code));
     } finally {
       setLoading(false);
@@ -123,15 +209,27 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   const getErrorMessage = (errorCode) => {
+    if (!errorCode) {
+      return "Error al crear la cuenta. Intenta nuevamente.";
+    }
+
     switch (errorCode) {
       case "auth/email-already-in-use":
-        return "Este correo ya está registrado.";
+        return "Este correo electrónico ya está registrado. Si no verificaste tu cuenta anteriormente, espera unos minutos y intenta nuevamente.";
       case "auth/invalid-email":
         return "El correo electrónico no es válido.";
+      case "auth/operation-not-allowed":
+        return "El registro con email/contraseña no está habilitado.";
       case "auth/weak-password":
         return "La contraseña es demasiado débil.";
       default:
-        return "Error al crear la cuenta. Intenta nuevamente.";
+        if (
+          typeof errorCode === "string" &&
+          errorCode.includes("already-in-use")
+        ) {
+          return "Este email ya está en uso. Si no verificaste tu cuenta, espera 1 hora e intenta nuevamente.";
+        }
+        return `Error al crear la cuenta: ${errorCode}. Intenta nuevamente.`;
     }
   };
 
@@ -166,10 +264,7 @@ const RegisterScreen = ({ navigation }) => {
               />
               <Text style={styles.title_card}>Crear Cuenta</Text>
             </View>
-            <View style={styles.headerRight}>
-              {/* Espacio vacío para mantener la simetría */}
-              <View style={{ width: 48 }} />
-            </View>
+
             <TextInput
               label="Correo Electrónico"
               value={formData.email}
@@ -277,6 +372,22 @@ const RegisterScreen = ({ navigation }) => {
                 Inicia sesión aquí
               </Button>
             </View>
+
+            {/* Información adicional (igual que en la web) */}
+            <Card style={styles.infoCard}>
+              <Card.Content style={styles.infoContent}>
+                <IconButton
+                  icon="information"
+                  size={20}
+                  iconColor="#0369a1"
+                  style={styles.infoIcon}
+                />
+                <Text style={styles.infoText}>
+                  <Text style={styles.boldText}>Nota:</Text> Las cuentas no
+                  verificadas se eliminan automáticamente después de 24 horas.
+                </Text>
+              </Card.Content>
+            </Card>
           </Card.Content>
         </Card>
       </ScrollView>
@@ -371,6 +482,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 24,
+    marginBottom: 16,
   },
   loginText: {
     color: "#64748b",
@@ -383,6 +495,33 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#004AAD",
     letterSpacing: 0.2,
+  },
+  infoCard: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  infoContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+  },
+  infoIcon: {
+    margin: 0,
+    marginRight: 12,
+  },
+  infoText: {
+    color: "#0369a1",
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 0.1,
+  },
+  boldText: {
+    fontWeight: "700",
   },
 });
 
