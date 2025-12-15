@@ -14,6 +14,17 @@ import { IconButton, Button } from "react-native-paper";
 import * as ImagePicker from "expo-image-picker";
 import { usePostActions } from "../../hooks/usePostActions";
 
+const VALIDATION = {
+  TITLE: {
+    MIN: 5,
+    MAX: 200,
+  },
+  CONTENT: {
+    MIN: 10,
+    MAX: 5000,
+  },
+};
+
 const CreatePostModal = ({
   visible,
   onClose,
@@ -28,6 +39,10 @@ const CreatePostModal = ({
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState({
+    title: "",
+    content: "",
+  });
 
   const { createPost, uploadImages } = usePostActions();
 
@@ -38,8 +53,76 @@ const CreatePostModal = ({
       setContent("");
       setImage(null);
       setUploadProgress(0);
+      setFieldErrors({ title: "", content: "" });
     }
   }, [visible]);
+
+  const validateTitle = (text) => {
+    if (!text || text.trim().length === 0) {
+      return "El título es requerido";
+    }
+    if (text.trim().length < VALIDATION.TITLE.MIN) {
+      return `El título debe tener al menos ${VALIDATION.TITLE.MIN} caracteres`;
+    }
+    if (text.length > VALIDATION.TITLE.MAX) {
+      return `El título no puede exceder ${VALIDATION.TITLE.MAX} caracteres`;
+    }
+    return "";
+  };
+
+  const validateContent = (text) => {
+    if (!text || text.trim().length === 0) {
+      return "El contenido es requerido";
+    }
+    if (text.trim().length < VALIDATION.CONTENT.MIN) {
+      return `El contenido debe tener al menos ${VALIDATION.CONTENT.MIN} caracteres`;
+    }
+    if (text.length > VALIDATION.CONTENT.MAX) {
+      return `El contenido no puede exceder ${VALIDATION.CONTENT.MAX} caracteres`;
+    }
+    return "";
+  };
+
+  const isFormValid = () => {
+    const titleError = validateTitle(title);
+    const contentError = validateContent(content);
+    return !titleError && !contentError;
+  };
+
+  const handleTitleChange = (text) => {
+    // Limitar estrictamente la longitud
+    const limitedText = text.slice(0, VALIDATION.TITLE.MAX);
+    setTitle(limitedText);
+
+    // Validar solo si el usuario ha escrito algo
+    if (limitedText.length > 0) {
+      const error = validateTitle(limitedText);
+      setFieldErrors((prev) => ({ ...prev, title: error }));
+    } else {
+      setFieldErrors((prev) => ({ ...prev, title: "" }));
+    }
+  };
+
+  const handleContentChange = (text) => {
+    // Limitar estrictamente la longitud
+    const limitedText = text.slice(0, VALIDATION.CONTENT.MAX);
+    setContent(limitedText);
+
+    // Validar solo si el usuario ha escrito algo
+    if (limitedText.length > 0) {
+      const error = validateContent(limitedText);
+      setFieldErrors((prev) => ({ ...prev, content: error }));
+    } else {
+      setFieldErrors((prev) => ({ ...prev, content: "" }));
+    }
+  };
+
+  const getCharCountColor = (length, max) => {
+    const percentage = (length / max) * 100;
+    if (percentage >= 95) return "#ef4444"; // Rojo cuando está cerca del límite
+    if (percentage >= 80) return "#f59e0b"; // Amarillo cuando está al 80%
+    return "#9ca3af"; // Gris por defecto
+  };
 
   // Seleccionar imagen
   const pickImage = async () => {
@@ -79,23 +162,15 @@ const CreatePostModal = ({
 
   // Crear publicación
   const handleCreatePost = async () => {
-    if (!title.trim()) {
-      Alert.alert("Error", "El título es requerido");
-      return;
-    }
+    const titleError = validateTitle(title);
+    const contentError = validateContent(content);
 
-    if (!content.trim()) {
-      Alert.alert("Error", "El contenido es requerido");
-      return;
-    }
-
-    if (title.trim().length < 5) {
-      Alert.alert("Error", "El título debe tener al menos 5 caracteres");
-      return;
-    }
-
-    if (content.trim().length < 10) {
-      Alert.alert("Error", "El contenido debe tener al menos 10 caracteres");
+    if (titleError || contentError) {
+      setFieldErrors({
+        title: titleError,
+        content: contentError,
+      });
+      Alert.alert("Error de validación", titleError || contentError);
       return;
     }
 
@@ -243,32 +318,81 @@ const CreatePostModal = ({
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Título *</Text>
               <TextInput
-                style={styles.titleInput}
+                style={[
+                  styles.titleInput,
+                  fieldErrors.title && styles.inputError,
+                ]}
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={handleTitleChange}
                 placeholder="Título de la publicación"
                 placeholderTextColor="#9ca3af"
-                maxLength={200}
+                maxLength={VALIDATION.TITLE.MAX}
                 editable={!loading}
               />
-              <Text style={styles.charCount}>{title.length}/200</Text>
+              <View style={styles.inputFooter}>
+                {fieldErrors.title ? (
+                  <Text style={styles.errorText}>{fieldErrors.title}</Text>
+                ) : (
+                  <Text style={styles.hintText}>
+                    Mínimo {VALIDATION.TITLE.MIN} caracteres
+                  </Text>
+                )}
+                <Text
+                  style={[
+                    styles.charCount,
+                    {
+                      color: getCharCountColor(
+                        title.length,
+                        VALIDATION.TITLE.MAX
+                      ),
+                    },
+                  ]}
+                >
+                  {title.length}/{VALIDATION.TITLE.MAX}
+                </Text>
+              </View>
             </View>
 
             {/* Contenido */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Contenido *</Text>
               <TextInput
-                style={styles.contentInput}
+                style={[
+                  styles.contentInput,
+                  fieldErrors.content && styles.inputError,
+                ]}
                 value={content}
-                onChangeText={setContent}
+                onChangeText={handleContentChange}
                 placeholder="Escribe el contenido de tu publicación..."
                 placeholderTextColor="#9ca3af"
                 multiline
                 numberOfLines={6}
                 textAlignVertical="top"
+                maxLength={VALIDATION.CONTENT.MAX}
                 editable={!loading}
               />
-              <Text style={styles.charCount}>{content.length}/5000</Text>
+              <View style={styles.inputFooter}>
+                {fieldErrors.content ? (
+                  <Text style={styles.errorText}>{fieldErrors.content}</Text>
+                ) : (
+                  <Text style={styles.hintText}>
+                    Mínimo {VALIDATION.CONTENT.MIN} caracteres
+                  </Text>
+                )}
+                <Text
+                  style={[
+                    styles.charCount,
+                    {
+                      color: getCharCountColor(
+                        content.length,
+                        VALIDATION.CONTENT.MAX
+                      ),
+                    },
+                  ]}
+                >
+                  {content.length}/{VALIDATION.CONTENT.MAX}
+                </Text>
+              </View>
             </View>
 
             {/* Imagen */}
@@ -335,10 +459,9 @@ const CreatePostModal = ({
               onPress={handleCreatePost}
               style={[
                 styles.createButton,
-                (!title.trim() || !content.trim()) &&
-                  styles.createButtonDisabled,
+                !isFormValid() && styles.createButtonDisabled,
               ]}
-              disabled={loading || !title.trim() || !content.trim()}
+              disabled={loading || !isFormValid()}
               loading={loading}
               labelStyle={styles.createButtonText}
             >
@@ -470,11 +593,28 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     textAlignVertical: "top",
   },
+  inputError: {
+    borderColor: "#ef4444",
+    borderWidth: 1.5,
+  },
+  inputFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  hintText: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  errorText: {
+    fontSize: 12,
+    color: "#ef4444",
+    fontWeight: "500",
+  },
   charCount: {
     fontSize: 12,
-    color: "#9ca3af",
-    textAlign: "right",
-    marginTop: 6,
+    fontWeight: "600",
   },
   imageContainer: {
     marginBottom: 20,
