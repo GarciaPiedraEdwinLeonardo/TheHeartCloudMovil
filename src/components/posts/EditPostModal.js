@@ -18,13 +18,29 @@ import { serverTimestamp } from "firebase/firestore";
 
 const { width } = Dimensions.get("window");
 
+// 🔥 CONSTANTES DE VALIDACIÓN 🔥
+const VALIDATION = {
+  TITLE: {
+    MIN: 5,
+    MAX: 200,
+  },
+  CONTENT: {
+    MIN: 10,
+    MAX: 5000,
+  },
+};
+
 const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [newImage, setNewImage] = useState(null); // URI de nueva imagen (si se selecciona)
-  const [existingImage, setExistingImage] = useState(null); // Objeto image existente
+  const [newImage, setNewImage] = useState(null);
+  const [existingImage, setExistingImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState({
+    title: "",
+    content: "",
+  });
 
   const { editPost, uploadImages } = usePostActions();
 
@@ -38,14 +54,11 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
       const imagesArray = post.images || [];
 
       if (imagesArray.length > 0) {
-        // Tomar solo la primera imagen
         const img = imagesArray[0];
 
-        // Formatear según el tipo
         if (typeof img === "object" && img.url) {
           setExistingImage(img);
         } else if (typeof img === "string") {
-          // Convertir URL string a objeto image
           setExistingImage({
             url: img,
             thumbnailUrl: img,
@@ -62,8 +75,78 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
 
       setNewImage(null);
       setUploadProgress(0);
+      setFieldErrors({ title: "", content: "" });
     }
   }, [post]);
+
+  // 🔥 VALIDAR TÍTULO 🔥
+  const validateTitle = (text) => {
+    if (!text || text.trim().length === 0) {
+      return "El título es requerido";
+    }
+    if (text.trim().length < VALIDATION.TITLE.MIN) {
+      return `El título debe tener al menos ${VALIDATION.TITLE.MIN} caracteres`;
+    }
+    if (text.length > VALIDATION.TITLE.MAX) {
+      return `El título no puede exceder ${VALIDATION.TITLE.MAX} caracteres`;
+    }
+    return "";
+  };
+
+  // 🔥 VALIDAR CONTENIDO 🔥
+  const validateContent = (text) => {
+    if (!text || text.trim().length === 0) {
+      return "El contenido es requerido";
+    }
+    if (text.trim().length < VALIDATION.CONTENT.MIN) {
+      return `El contenido debe tener al menos ${VALIDATION.CONTENT.MIN} caracteres`;
+    }
+    if (text.length > VALIDATION.CONTENT.MAX) {
+      return `El contenido no puede exceder ${VALIDATION.CONTENT.MAX} caracteres`;
+    }
+    return "";
+  };
+
+  // 🔥 VERIFICAR SI EL FORMULARIO ES VÁLIDO 🔥
+  const isFormValid = () => {
+    const titleError = validateTitle(title);
+    const contentError = validateContent(content);
+    return !titleError && !contentError;
+  };
+
+  // 🔥 MANEJAR CAMBIO DE TÍTULO CON VALIDACIÓN 🔥
+  const handleTitleChange = (text) => {
+    const limitedText = text.slice(0, VALIDATION.TITLE.MAX);
+    setTitle(limitedText);
+
+    if (limitedText.length > 0) {
+      const error = validateTitle(limitedText);
+      setFieldErrors((prev) => ({ ...prev, title: error }));
+    } else {
+      setFieldErrors((prev) => ({ ...prev, title: "" }));
+    }
+  };
+
+  // 🔥 MANEJAR CAMBIO DE CONTENIDO CON VALIDACIÓN 🔥
+  const handleContentChange = (text) => {
+    const limitedText = text.slice(0, VALIDATION.CONTENT.MAX);
+    setContent(limitedText);
+
+    if (limitedText.length > 0) {
+      const error = validateContent(limitedText);
+      setFieldErrors((prev) => ({ ...prev, content: error }));
+    } else {
+      setFieldErrors((prev) => ({ ...prev, content: "" }));
+    }
+  };
+
+  // 🔥 OBTENER COLOR DEL CONTADOR DE CARACTERES 🔥
+  const getCharCountColor = (length, max) => {
+    const percentage = (length / max) * 100;
+    if (percentage >= 95) return "#ef4444";
+    if (percentage >= 80) return "#f59e0b";
+    return "#9ca3af";
+  };
 
   // Seleccionar imagen de la galería
   const pickImage = async () => {
@@ -84,7 +167,7 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-        allowsMultipleSelection: false, // Solo una imagen
+        allowsMultipleSelection: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -162,34 +245,18 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
     setNewImage(null);
   };
 
-  // Obtener dimensiones de la imagen (función simplificada)
-  const getImageDimensions = async (imageUri) => {
-    return new Promise((resolve, reject) => {
-      Image.getSize(
-        imageUri,
-        (width, height) => {
-          resolve({ width, height });
-        },
-        (error) => {
-          console.warn(
-            "No se pudieron obtener dimensiones de la imagen:",
-            error
-          );
-          resolve({ width: 0, height: 0 });
-        }
-      );
-    });
-  };
-
   // Subir imagen y guardar cambios
   const handleSave = async () => {
-    if (!title.trim()) {
-      Alert.alert("Error", "El título es requerido");
-      return;
-    }
+    // 🔥 VALIDACIÓN FINAL ANTES DE GUARDAR 🔥
+    const titleError = validateTitle(title);
+    const contentError = validateContent(content);
 
-    if (!content.trim()) {
-      Alert.alert("Error", "El contenido es requerido");
+    if (titleError || contentError) {
+      setFieldErrors({
+        title: titleError,
+        content: contentError,
+      });
+      Alert.alert("Error de validación", titleError || contentError);
       return;
     }
 
@@ -210,22 +277,19 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
             Image.getSize(
               newImage,
               (width, height) => resolve({ width, height }),
-              () => resolve({ width: 0, height: 0 }) // Fallback si hay error
+              () => resolve({ width: 0, height: 0 })
             );
           });
         } catch (dimError) {
           console.warn("Error obteniendo dimensiones:", dimError);
         }
 
-        // Subir la nueva imagen con sus dimensiones
         const uploadResult = await uploadImages([newImage], [dimensions]);
 
         if (uploadResult.success) {
-          // Tomar la primera imagen del resultado
           if (uploadResult.images && uploadResult.images.length > 0) {
             finalImage = uploadResult.images[0];
           } else if (uploadResult.urls && uploadResult.urls.length > 0) {
-            // Compatibilidad con formato antiguo
             const filename =
               newImage.split("/").pop() || `image_${Date.now()}.jpg`;
             finalImage = {
@@ -248,12 +312,9 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
         finalImage = existingImage;
         setUploadProgress(0.6);
       }
-      // Caso 3: No hay imagen
 
-      // Preparar el array de imágenes (solo una o vacío)
       const imagesArray = finalImage ? [finalImage] : [];
 
-      // Preparar actualizaciones
       const updates = {
         title: title.trim(),
         content: content.trim(),
@@ -313,12 +374,12 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
     setNewImage(null);
     setExistingImage(null);
     setUploadProgress(0);
+    setFieldErrors({ title: "", content: "" });
     onClose();
   };
 
   // Renderizar vista previa de imagen
   const renderImagePreview = () => {
-    // Mostrar nueva imagen si hay
     if (newImage) {
       return (
         <View style={styles.imagePreviewContainer}>
@@ -352,7 +413,6 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
       );
     }
 
-    // Mostrar imagen existente si hay
     if (existingImage) {
       const imageUrl =
         typeof existingImage === "string" ? existingImage : existingImage.url;
@@ -389,7 +449,6 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
       );
     }
 
-    // No hay imagen
     return (
       <View style={styles.imagePreviewContainer}>
         <Text style={styles.imageLabel}>Imagen de la publicación</Text>
@@ -453,32 +512,81 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Título *</Text>
               <TextInput
-                style={styles.titleInput}
+                style={[
+                  styles.titleInput,
+                  fieldErrors.title && styles.inputError,
+                ]}
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={handleTitleChange}
                 placeholder="Título de la publicación"
                 placeholderTextColor="#9ca3af"
-                maxLength={200}
+                maxLength={VALIDATION.TITLE.MAX}
                 editable={!loading}
               />
-              <Text style={styles.charCount}>{title.length}/200</Text>
+              <View style={styles.inputFooter}>
+                {fieldErrors.title ? (
+                  <Text style={styles.errorText}>{fieldErrors.title}</Text>
+                ) : (
+                  <Text style={styles.hintText}>
+                    Mínimo {VALIDATION.TITLE.MIN} caracteres
+                  </Text>
+                )}
+                <Text
+                  style={[
+                    styles.charCount,
+                    {
+                      color: getCharCountColor(
+                        title.length,
+                        VALIDATION.TITLE.MAX
+                      ),
+                    },
+                  ]}
+                >
+                  {title.length}/{VALIDATION.TITLE.MAX}
+                </Text>
+              </View>
             </View>
 
             {/* Contenido */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Contenido *</Text>
               <TextInput
-                style={styles.contentInput}
+                style={[
+                  styles.contentInput,
+                  fieldErrors.content && styles.inputError,
+                ]}
                 value={content}
-                onChangeText={setContent}
+                onChangeText={handleContentChange}
                 placeholder="Escribe el contenido de tu publicación..."
                 placeholderTextColor="#9ca3af"
                 multiline
                 numberOfLines={6}
                 textAlignVertical="top"
+                maxLength={VALIDATION.CONTENT.MAX}
                 editable={!loading}
               />
-              <Text style={styles.charCount}>{content.length}/5000</Text>
+              <View style={styles.inputFooter}>
+                {fieldErrors.content ? (
+                  <Text style={styles.errorText}>{fieldErrors.content}</Text>
+                ) : (
+                  <Text style={styles.hintText}>
+                    Mínimo {VALIDATION.CONTENT.MIN} caracteres
+                  </Text>
+                )}
+                <Text
+                  style={[
+                    styles.charCount,
+                    {
+                      color: getCharCountColor(
+                        content.length,
+                        VALIDATION.CONTENT.MAX
+                      ),
+                    },
+                  ]}
+                >
+                  {content.length}/{VALIDATION.CONTENT.MAX}
+                </Text>
+              </View>
             </View>
 
             {/* Vista previa de imagen */}
@@ -547,9 +655,9 @@ const EditPostModal = ({ visible, onClose, post, onPostUpdated }) => {
               onPress={handleSave}
               style={[
                 styles.saveButton,
-                (!title.trim() || !content.trim()) && styles.saveButtonDisabled,
+                !isFormValid() && styles.saveButtonDisabled,
               ]}
-              disabled={loading || !title.trim() || !content.trim()}
+              disabled={loading || !isFormValid()}
               loading={loading}
               labelStyle={styles.saveButtonText}
             >
@@ -653,11 +761,28 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     textAlignVertical: "top",
   },
+  inputError: {
+    borderColor: "#ef4444",
+    borderWidth: 1.5,
+  },
+  inputFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  hintText: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  errorText: {
+    fontSize: 12,
+    color: "#ef4444",
+    fontWeight: "500",
+  },
   charCount: {
     fontSize: 12,
-    color: "#9ca3af",
-    textAlign: "right",
-    marginTop: 6,
+    fontWeight: "600",
   },
   imagePreviewContainer: {
     marginBottom: 24,

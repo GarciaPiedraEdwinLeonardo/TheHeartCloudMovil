@@ -267,26 +267,6 @@ const CommentList = ({
 
   return (
     <View style={styles.container}>
-      {/* Encabezado de estadísticas */}
-      <View style={styles.statsHeader}>
-        <View style={styles.statsLeft}>
-          <Text style={styles.statsText}>
-            {visibleCommentsCount}{" "}
-            {visibleCommentsCount === 1 ? "comentario" : "comentarios"}
-          </Text>
-          {organizedComments.length > 0 && (
-            <Text style={styles.threadsText}>
-              {organizedComments.length}{" "}
-              {organizedComments.length === 1 ? "hilo" : "hilos"}
-            </Text>
-          )}
-        </View>
-        <View style={styles.limitIndicator}>
-          <IconButton icon="cellphone" size={14} iconColor="#6b7280" />
-          <Text style={styles.limitText}>Límite: {MAX_DEPTH} niveles</Text>
-        </View>
-      </View>
-
       {/* Lista de comentarios */}
       <ScrollView
         style={styles.scrollView}

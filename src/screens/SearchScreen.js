@@ -460,6 +460,7 @@ const SearchScreen = ({ navigation }) => {
             iconColor="#2a55ff"
             loading={loading}
             autoFocus={true}
+            maxLength={100}
           />
         </View>
       </View>
