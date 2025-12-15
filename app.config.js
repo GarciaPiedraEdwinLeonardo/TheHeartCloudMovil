@@ -41,6 +41,7 @@ export default {
         process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET_CEDULAS,
       uploadPresetProfile:
         process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET_PERFIL,
+      backendUrl: process.env.EXPO_PUBLIC_BACKEND_URL,
     },
   },
 };

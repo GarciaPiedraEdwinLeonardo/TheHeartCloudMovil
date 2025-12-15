@@ -25,6 +25,7 @@ import {
 import { auth, db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { TextInput, Button, Card, IconButton } from "react-native-paper";
+import Constants from "expo-constants";
 
 const RegisterScreen = ({ navigation }) => {
   const { loading, setLoading } = useAuth();
@@ -84,35 +85,102 @@ const RegisterScreen = ({ navigation }) => {
     return !error;
   };
 
-  // Limpiar usuario no verificado existente (igual que en la web)
+  // Limpiar usuario no verificado existente
   const cleanupExistingUnverifiedUser = async (email) => {
     try {
-      const usersRef = collection(db, "users");
+      console.log("🔍 Buscando usuarios previos con email:", email);
+
       const q = query(
-        usersRef,
+        collection(db, "users"),
         where("email", "==", email),
         where("emailVerified", "==", false)
       );
 
       const snapshot = await getDocs(q);
 
+      console.log("📊 Usuarios encontrados:", snapshot.size);
+
       if (!snapshot.empty) {
         const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
         const now = new Date();
+        const expiresAt = userData.verificationExpiresAt?.toDate();
         const lastSent = userData.emailVerificationSentAt?.toDate();
 
-        // Verificar si se envió recientemente (menos de 1 hora)
+        console.log("📅 Ahora:", now);
+        console.log("⏰ Expira:", expiresAt);
+        console.log("❓ ¿Expiró?:", expiresAt && expiresAt < now);
+
+        // Si ya expiró, eliminar completamente (Firestore + Auth)
+        if (expiresAt && expiresAt < now) {
+          console.log("🗑️ Usuario expirado encontrado, eliminando...");
+
+          // Intentar llamar al backend para eliminar de Auth y Firestore
+          // Nota: Necesitarás configurar tu BACKEND_URL en un archivo de configuración
+          const backendUrl = Constants.expoConfig.extra.backendUrl;
+
+          if (backendUrl) {
+            try {
+              const response = await fetch(
+                `${backendUrl}/api/deleteUnverifiedUser`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email, userId: userDoc.id }),
+                }
+              );
+
+              const result = await response.json();
+
+              if (response.ok && result.success) {
+                console.log(
+                  "✅ Usuario eliminado completamente (Auth + Firestore)"
+                );
+                console.log("📋 Detalles:", result);
+                return; // Usuario eliminado exitosamente
+              } else {
+                console.warn("⚠️ Eliminación parcial:", result);
+                // Continuar de todas formas
+              }
+            } catch (err) {
+              console.error("❌ Error llamando al backend:", err);
+              // Si falla el backend, intentar eliminar solo de Firestore
+              await deleteDoc(doc(db, "users", userDoc.id));
+              console.log(
+                "✅ Usuario eliminado de Firestore (Auth requiere esperar)"
+              );
+              throw new Error("EXPIRED_USER_AUTH_PENDING");
+            }
+          } else {
+            // Si no hay backend configurado, solo eliminar de Firestore
+            await deleteDoc(doc(db, "users", userDoc.id));
+            console.log("✅ Usuario eliminado de Firestore");
+            console.warn(
+              "⚠️ Backend no configurado - usuario permanece en Authentication"
+            );
+            throw new Error("EXPIRED_USER_AUTH_PENDING");
+          }
+        }
+
+        // Si NO ha expirado, verificar tiempo de reenvío
         if (lastSent && now - lastSent < 60 * 60 * 1000) {
+          const timeRemaining = Math.ceil(
+            (60 * 60 * 1000 - (now - lastSent)) / 60000
+          );
           throw new Error(
-            "Ya se envió un email de verificación recientemente. Revisa tu bandeja de entrada y espera al menos 1 hora."
+            `Ya se envió un email de verificación recientemente. Revisa tu bandeja de entrada y espera ${timeRemaining} minutos más.`
           );
         }
 
         // Eliminar el usuario no verificado existente
+        console.log("🗑️ Usuario no verificado encontrado, eliminando...");
         await deleteDoc(doc(db, "users", userDoc.id));
+        console.log("✅ Usuario eliminado exitosamente");
+      } else {
+        console.log("✨ No hay usuarios previos con este email");
       }
     } catch (error) {
+      console.error("❌ Error en limpieza:", error);
       throw error;
     }
   };
