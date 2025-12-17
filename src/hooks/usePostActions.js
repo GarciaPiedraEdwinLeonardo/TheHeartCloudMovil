@@ -16,10 +16,62 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../config/firebase";
 import cloudinaryConfig from "../config/cloudinary";
+import Constants from "expo-constants";
 
 export const usePostActions = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Función para eliminar imágenes de Cloudinary
+  const deleteFromCloudinary = async (imageUrl) => {
+    if (!imageUrl) return { success: true };
+
+    try {
+      const backendUrl = Constants.expoConfig.extra.backendUrl;
+      if (!backendUrl) {
+        console.warn(
+          "Backend no configurado - imagen permanecerá en Cloudinary"
+        );
+        return { success: false, error: "Backend no configurado" };
+      }
+
+      const response = await fetch(`${backendUrl}/api/deleteCloudinaryImage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        console.warn(
+          "No se pudo eliminar la imagen de Cloudinary:",
+          result.error
+        );
+        return { success: false, error: result.error };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.warn("Error eliminando imagen de Cloudinary:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Función auxiliar para eliminar múltiples imágenes de un post
+  const deletePostImages = async (images) => {
+    if (!images || images.length === 0) return;
+
+    console.log(`🗑️ Eliminando ${images.length} imagen(es) de Cloudinary...`);
+
+    const deletionPromises = images.map(async (image) => {
+      if (image.url) {
+        await deleteFromCloudinary(image.url);
+      }
+    });
+
+    await Promise.allSettled(deletionPromises);
+  };
 
   // Función auxiliar para verificar permisos (solo autor)
   const checkPostPermissions = async (postId) => {
@@ -77,32 +129,25 @@ export const usePostActions = () => {
       // Calcular cambio en aura basado en reacción anterior y nueva
       if (reactionType === "like") {
         if (wasLiked) {
-          // Quitar like: -1 al aura
           auraChange = -1;
         } else if (wasDisliked) {
-          // Cambiar de dislike a like: +2 al aura
           auraChange = 2;
         } else {
-          // Nuevo like: +1 al aura
           auraChange = 1;
         }
       } else if (reactionType === "dislike") {
         if (wasDisliked) {
-          // Quitar dislike: +1 al aura
           auraChange = 1;
         } else if (wasLiked) {
-          // Cambiar de like a dislike: -2 al aura
           auraChange = -2;
         } else {
-          // Nuevo dislike: -1 al aura
           auraChange = -1;
         }
       } else if (reactionType === "remove") {
-        // Remover todas las reacciones
         if (wasLiked) {
-          auraChange = -1; // Se quita un like
+          auraChange = -1;
         } else if (wasDisliked) {
-          auraChange = 1; // Se quita un dislike
+          auraChange = 1;
         }
       }
 
@@ -153,8 +198,29 @@ export const usePostActions = () => {
       setLoading(true);
       setError(null);
 
-      // Verificar permisos (solo autor puede editar)
-      await checkPostPermissions(postId);
+      // Verificar permisos y obtener datos del post
+      const { postData } = await checkPostPermissions(postId);
+
+      // Si se están actualizando las imágenes, eliminar las antiguas de Cloudinary
+      if (updates.images) {
+        const oldImages = postData.images || [];
+        const newImages = updates.images || [];
+
+        // Encontrar imágenes que se eliminaron
+        const oldImageUrls = oldImages.map((img) => img.url);
+        const newImageUrls = newImages.map((img) => img.url);
+        const imagesToDelete = oldImages.filter(
+          (img) => !newImageUrls.includes(img.url)
+        );
+
+        // Eliminar imágenes antiguas de Cloudinary
+        if (imagesToDelete.length > 0) {
+          console.log(
+            `🗑️ Eliminando ${imagesToDelete.length} imagen(es) antigua(s)...`
+          );
+          await deletePostImages(imagesToDelete);
+        }
+      }
 
       const postRef = doc(db, "posts", postId);
 
@@ -248,18 +314,30 @@ export const usePostActions = () => {
       const { postData } = await checkPostPermissions(postId);
       const currentUser = auth.currentUser;
 
-      // PRIMERO: Eliminar comentarios del post
-      const commentsResult = await deletePostComments(postId);
-      const deletedCommentsCount = commentsResult.deletedComments || 0;
+      const commentsQuery = query(
+        collection(db, "comments"),
+        where("postId", "==", postId)
+      );
 
-      // SEGUNDO: Actualizar estadísticas de autores de comentarios
+      const commentsSnapshot = await getDocs(commentsQuery);
+      const deletedCommentsCount = commentsSnapshot.size;
+
+      // PRIMERO: actualizar estadísticas
       let updatedAuthorsCount = 0;
       if (deletedCommentsCount > 0) {
         const statsResult = await updateUsersCommentStats(postId);
         updatedAuthorsCount = statsResult.updatedAuthors || 0;
       }
 
-      // TERCERO: Eliminar el post y actualizar contadores
+      // SEGUNDO: eliminar comentarios
+      await deletePostComments(postId);
+
+      // TERCERO: Eliminar imágenes del post de Cloudinary
+      if (postData.images && postData.images.length > 0) {
+        await deletePostImages(postData.images);
+      }
+
+      // CUARTO: Eliminar el post y actualizar contadores
       const batch = writeBatch(db);
 
       // Eliminar post
@@ -283,11 +361,14 @@ export const usePostActions = () => {
 
       await batch.commit();
 
+      console.log("✅ Post eliminado exitosamente");
+
       return {
         success: true,
         deletionType: "user",
         deletedComments: deletedCommentsCount,
         updatedAuthors: updatedAuthorsCount,
+        deletedImages: postData.images?.length || 0,
       };
     } catch (err) {
       console.error("Error en deletePost:", err);
@@ -455,6 +536,8 @@ export const usePostActions = () => {
         "stats.contributionCount": increment(1),
       });
 
+      console.log("✅ Post creado exitosamente");
+
       return { success: true, postId: postRef.id };
     } catch (err) {
       console.error("Error creando post:", err);
@@ -471,6 +554,7 @@ export const usePostActions = () => {
     deletePost,
     uploadImages,
     createPost,
+    deleteFromCloudinary, // Exportar para uso externo si es necesario
     loading,
     error,
     clearError: () => setError(null),
