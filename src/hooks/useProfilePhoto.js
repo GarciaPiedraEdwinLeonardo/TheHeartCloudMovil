@@ -1,12 +1,62 @@
 import { useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db, auth } from "../config/firebase";
 import * as ImagePicker from "expo-image-picker";
 import cloudinaryConfig from "./../config/cloudinary";
+import Constants from "expo-constants";
 
 export const useProfilePhoto = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+
+  const deleteFromCloudinary = async (imageUrl) => {
+    if (!imageUrl) return { success: true };
+
+    try {
+      const backendUrl = Constants.expoConfig.extra.backendUrl;
+      if (!backendUrl) {
+        console.warn(
+          "Backend no configurado - imagen permanecerá en Cloudinary"
+        );
+        return { success: false, error: "Backend no configurado" };
+      }
+
+      const response = await fetch(`${backendUrl}/api/deleteCloudinaryImage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        console.warn(
+          "No se pudo eliminar la imagen de Cloudinary:",
+          result.error
+        );
+        return { success: false, error: result.error };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.warn("Error eliminando imagen de Cloudinary:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const getCurrentPhotoURL = async () => {
+    if (!auth.currentUser) return null;
+
+    try {
+      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+      if (userDoc.exists()) {
+        return userDoc.data().photoURL || null;
+      }
+    } catch (err) {
+      console.error("Error obteniendo foto actual:", err);
+    }
+    return null;
+  };
 
   const uploadToCloudinary = async (fileUri) => {
     try {
@@ -130,19 +180,30 @@ export const useProfilePhoto = () => {
 
       const userId = auth.currentUser.uid;
 
-      // Subir a Cloudinary
+      // Obtener la foto actual antes de subir la nueva
+      const currentPhotoURL = await getCurrentPhotoURL();
+
+      // Subir nueva imagen a Cloudinary
       const cloudinaryUrl = await uploadToCloudinary(imageUri);
 
       if (!cloudinaryUrl) {
         throw new Error("No se obtuvo URL de Cloudinary");
       }
 
+      // Actualizar Firestore con la nueva foto
       await updateDoc(doc(db, "users", userId), {
         photoURL: cloudinaryUrl,
         lastUpdated: new Date(),
       });
 
       console.log("✅ Foto actualizada en photoURL:", cloudinaryUrl);
+
+      // Eliminar la foto anterior de Cloudinary (si existía)
+      if (currentPhotoURL) {
+        console.log("🗑️ Eliminando foto anterior de Cloudinary...");
+        await deleteFromCloudinary(currentPhotoURL);
+      }
+
       return cloudinaryUrl;
     } catch (err) {
       console.error("Error subiendo foto:", err);
@@ -165,12 +226,23 @@ export const useProfilePhoto = () => {
 
       const userId = auth.currentUser.uid;
 
+      // Obtener la foto actual antes de eliminarla
+      const currentPhotoURL = await getCurrentPhotoURL();
+
+      // Actualizar Firestore primero
       await updateDoc(doc(db, "users", userId), {
-        photoURL: null, // Único campo para foto
+        photoURL: null,
         lastUpdated: new Date(),
       });
 
       console.log("✅ Foto eliminada de photoURL");
+
+      // Eliminar de Cloudinary
+      if (currentPhotoURL) {
+        console.log("🗑️ Eliminando foto de Cloudinary...");
+        await deleteFromCloudinary(currentPhotoURL);
+      }
+
       return true;
     } catch (err) {
       console.error("Error eliminando foto:", err);
