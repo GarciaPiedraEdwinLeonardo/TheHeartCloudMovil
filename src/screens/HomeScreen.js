@@ -16,6 +16,7 @@ import {
   getDocs,
   doc,
   getDoc,
+  where,
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../config/firebase";
@@ -65,6 +66,7 @@ const HomeScreen = ({ navigation }) => {
       // Cargar TODOS los posts ordenados por fecha (más reciente primero)
       const postsQuery = query(
         collection(db, "posts"),
+        where("status", "==", "active"),
         orderBy("createdAt", "desc")
       );
 

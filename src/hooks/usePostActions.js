@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  addDoc,
   updateDoc,
   arrayUnion,
   arrayRemove,
@@ -73,7 +74,7 @@ export const usePostActions = () => {
     await Promise.allSettled(deletionPromises);
   };
 
-  // Función auxiliar para verificar permisos (solo autor)
+  // Función auxiliar para verificar permisos (solo autor en móvil)
   const checkPostPermissions = async (postId) => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
@@ -84,7 +85,7 @@ export const usePostActions = () => {
     const postDoc = await getDoc(postRef);
 
     if (!postDoc.exists()) {
-      throw new Error("El post no existe");
+      throw new Error("Publicación no encontrada");
     }
 
     const postData = postDoc.data();
@@ -97,94 +98,64 @@ export const usePostActions = () => {
     return { postData };
   };
 
-  // Reaccionar a un post (like/dislike)
-  const reactToPost = async (postId, reactionType) => {
+  // Crear nuevo post
+  const createPost = async (postData) => {
     try {
       setLoading(true);
       setError(null);
 
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        throw new Error("Usuario no autenticado");
+        throw new Error("Debes iniciar sesión para publicar");
       }
 
-      const userId = currentUser.uid;
-      const postRef = doc(db, "posts", postId);
-      const postDoc = await getDoc(postRef);
+      // Verificar que el usuario puede publicar (doctor o superior)
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const userData = userDoc.data();
 
-      if (!postDoc.exists()) {
-        throw new Error("El post no existe");
+      if (!["doctor", "moderator", "admin"].includes(userData?.role)) {
+        throw new Error("Solo usuarios verificados pueden publicar");
       }
 
-      const postData = postDoc.data();
-      const authorId = postData.authorId;
-      const currentLikes = postData.likes || [];
-      const currentDislikes = postData.dislikes || [];
+      const newPost = {
+        title: postData.title,
+        content: postData.content,
+        authorId: currentUser.uid,
+        forumId: postData.forumId,
+        createdAt: serverTimestamp(),
+        updatedAt: null,
+        likes: [],
+        dislikes: [],
+        images: postData.images || [],
+        stats: {
+          commentCount: 0,
+          viewCount: 0,
+        },
+        status: postData.status || "active",
+      };
 
-      // Determinar cambios en el aura
-      let auraChange = 0;
-      const wasLiked = currentLikes.includes(userId);
-      const wasDisliked = currentDislikes.includes(userId);
+      const docRef = await addDoc(collection(db, "posts"), newPost);
 
-      // Calcular cambio en aura basado en reacción anterior y nueva
-      if (reactionType === "like") {
-        if (wasLiked) {
-          auraChange = -1;
-        } else if (wasDisliked) {
-          auraChange = 2;
-        } else {
-          auraChange = 1;
-        }
-      } else if (reactionType === "dislike") {
-        if (wasDisliked) {
-          auraChange = 1;
-        } else if (wasLiked) {
-          auraChange = -2;
-        } else {
-          auraChange = -1;
-        }
-      } else if (reactionType === "remove") {
-        if (wasLiked) {
-          auraChange = -1;
-        } else if (wasDisliked) {
-          auraChange = 1;
-        }
-      }
-
-      // Usar batch para operación atómica
-      const batch = writeBatch(db);
-
-      // Actualizar reacciones del post
-      if (reactionType === "like") {
-        batch.update(postRef, {
-          likes: arrayUnion(userId),
-          dislikes: arrayRemove(userId),
+      // ALINEADO CON WEB: Manejar stats según el status del post
+      if (newPost.status === "active") {
+        // Post activo: incrementar todo
+        await updateDoc(doc(db, "forums", postData.forumId), {
+          postCount: increment(1),
+          lastPostAt: serverTimestamp(),
         });
-      } else if (reactionType === "dislike") {
-        batch.update(postRef, {
-          dislikes: arrayUnion(userId),
-          likes: arrayRemove(userId),
-        });
-      } else if (reactionType === "remove") {
-        batch.update(postRef, {
-          likes: arrayRemove(userId),
-          dislikes: arrayRemove(userId),
+
+        await updateDoc(doc(db, "users", currentUser.uid), {
+          "stats.postCount": increment(1),
+          "stats.contributionCount": increment(1),
         });
       }
+      // Si es pending, NO incrementar nada - se hará cuando se apruebe
 
-      // Actualizar aura del autor SOLO si hay cambio y no es el mismo usuario
-      if (auraChange !== 0 && authorId !== userId) {
-        const authorRef = doc(db, "users", authorId);
-        batch.update(authorRef, {
-          "stats.aura": increment(auraChange),
-        });
-      }
+      console.log("✅ Post creado exitosamente");
 
-      await batch.commit();
-
-      return { success: true, auraChange };
+      return { success: true, postId: docRef.id };
     } catch (err) {
-      console.error("Error en reactToPost:", err);
+      console.error("Error creando post:", err);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -192,13 +163,12 @@ export const usePostActions = () => {
     }
   };
 
-  // Editar un post
+  // Editar post
   const editPost = async (postId, updates) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Verificar permisos y obtener datos del post
       const { postData } = await checkPostPermissions(postId);
 
       // Si se están actualizando las imágenes, eliminar las antiguas de Cloudinary
@@ -231,7 +201,7 @@ export const usePostActions = () => {
 
       return { success: true };
     } catch (err) {
-      console.error("Error en editPost:", err);
+      console.error("Error editando post:", err);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -265,18 +235,24 @@ export const usePostActions = () => {
     }
   };
 
-  // Actualizar estadísticas de usuarios que comentaron
-  const updateUsersCommentStats = async (postId) => {
+  // Eliminar un post
+  const deletePost = async (postId) => {
     try {
+      setLoading(true);
+      setError(null);
+
+      const { postData } = await checkPostPermissions(postId);
+      const currentUser = auth.currentUser;
+
+      // ALINEADO CON WEB: Contar comentarios antes de eliminarlos
       const commentsQuery = query(
         collection(db, "comments"),
         where("postId", "==", postId)
       );
-
       const commentsSnapshot = await getDocs(commentsQuery);
       const authorsMap = new Map();
 
-      // Contar comentarios por autor
+      // Contar comentarios por autor ANTES de eliminarlos
       commentsSnapshot.forEach((commentDoc) => {
         const commentData = commentDoc.data();
         const authorId = commentData.authorId;
@@ -285,51 +261,9 @@ export const usePostActions = () => {
         }
       });
 
-      // Actualizar estadísticas de cada autor
-      const batch = writeBatch(db);
-      for (const [authorId, commentCount] of authorsMap) {
-        const authorRef = doc(db, "users", authorId);
-        batch.update(authorRef, {
-          "stats.commentCount": increment(-commentCount),
-          "stats.contributionCount": increment(-commentCount),
-        });
-      }
-
-      await batch.commit();
-
-      return { success: true, updatedAuthors: authorsMap.size };
-    } catch (error) {
-      console.error("Error actualizando estadísticas de autores:", error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  // Eliminar un post
-  const deletePost = async (postId) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Verificar permisos y obtener datos del post
-      const { postData } = await checkPostPermissions(postId);
-      const currentUser = auth.currentUser;
-
-      const commentsQuery = query(
-        collection(db, "comments"),
-        where("postId", "==", postId)
-      );
-
-      const commentsSnapshot = await getDocs(commentsQuery);
       const deletedCommentsCount = commentsSnapshot.size;
 
-      // PRIMERO: actualizar estadísticas
-      let updatedAuthorsCount = 0;
-      if (deletedCommentsCount > 0) {
-        const statsResult = await updateUsersCommentStats(postId);
-        updatedAuthorsCount = statsResult.updatedAuthors || 0;
-      }
-
-      // SEGUNDO: eliminar comentarios
+      // SEGUNDO: Eliminar comentarios del post
       await deletePostComments(postId);
 
       // TERCERO: Eliminar imágenes del post de Cloudinary
@@ -337,7 +271,22 @@ export const usePostActions = () => {
         await deletePostImages(postData.images);
       }
 
-      // CUARTO: Eliminar el post y actualizar contadores
+      // CUARTO: Actualizar estadísticas de autores de comentarios
+      let updatedAuthorsCount = 0;
+      if (deletedCommentsCount > 0) {
+        const batch = writeBatch(db);
+        for (const [authorId, commentCount] of authorsMap) {
+          const authorRef = doc(db, "users", authorId);
+          batch.update(authorRef, {
+            "stats.commentCount": increment(-commentCount),
+            "stats.contributionCount": increment(-commentCount),
+          });
+          updatedAuthorsCount++;
+        }
+        await batch.commit();
+      }
+
+      // QUINTO: Eliminar el post definitivamente y actualizar contadores
       const batch = writeBatch(db);
 
       // Eliminar post
@@ -352,12 +301,18 @@ export const usePostActions = () => {
         });
       }
 
-      // Actualizar estadísticas del autor del post
-      const authorRef = doc(db, "users", currentUser.uid);
-      batch.update(authorRef, {
-        "stats.postCount": increment(-1),
-        "stats.contributionCount": increment(-1),
-      });
+      // ALINEADO CON WEB: Actualizar estadísticas del autor del post
+      if (postData.authorId) {
+        const authorRef = doc(db, "users", postData.authorId);
+
+        if (postData.status === "active") {
+          // Post estaba activo: decrementar postCount y contributionCount
+          batch.update(authorRef, {
+            "stats.postCount": increment(-1),
+            "stats.contributionCount": increment(-1),
+          });
+        }
+      }
 
       await batch.commit();
 
@@ -365,13 +320,109 @@ export const usePostActions = () => {
 
       return {
         success: true,
-        deletionType: "user",
         deletedComments: deletedCommentsCount,
         updatedAuthors: updatedAuthorsCount,
         deletedImages: postData.images?.length || 0,
+        deletionType: "user", // En móvil siempre es eliminación por usuario
       };
     } catch (err) {
-      console.error("Error en deletePost:", err);
+      console.error("Error eliminando post:", err);
+      setError(err.message);
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reaccionar a post
+  const reactToPost = async (postId, reactionType) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error("Debes iniciar sesión");
+      }
+
+      const userId = currentUser.uid;
+      const postRef = doc(db, "posts", postId);
+      const postDoc = await getDoc(postRef);
+
+      if (!postDoc.exists()) {
+        throw new Error("Publicación no encontrada");
+      }
+
+      const postData = postDoc.data();
+      const authorId = postData.authorId;
+
+      // Determinar cambios en el aura
+      let auraChange = 0;
+      const currentLikes = postData.likes || [];
+      const currentDislikes = postData.dislikes || [];
+
+      const wasLiked = currentLikes.includes(userId);
+      const wasDisliked = currentDislikes.includes(userId);
+
+      // ALINEADO CON WEB: Calcular cambio en aura
+      if (reactionType === "like") {
+        if (wasLiked) {
+          auraChange = -1;
+        } else if (wasDisliked) {
+          auraChange = 2;
+        } else {
+          auraChange = 1;
+        }
+      } else if (reactionType === "dislike") {
+        if (wasDisliked) {
+          auraChange = 1;
+        } else if (wasLiked) {
+          auraChange = -2;
+        } else {
+          auraChange = -1;
+        }
+      } else if (reactionType === "remove") {
+        if (wasLiked) {
+          auraChange = -1;
+        } else if (wasDisliked) {
+          auraChange = 1;
+        }
+      }
+
+      // Usar batch para operación atómica
+      const batch = writeBatch(db);
+
+      // 1. Actualizar reacciones del post
+      if (reactionType === "like") {
+        batch.update(postRef, {
+          likes: arrayUnion(userId),
+          dislikes: arrayRemove(userId),
+        });
+      } else if (reactionType === "dislike") {
+        batch.update(postRef, {
+          dislikes: arrayUnion(userId),
+          likes: arrayRemove(userId),
+        });
+      } else if (reactionType === "remove") {
+        batch.update(postRef, {
+          likes: arrayRemove(userId),
+          dislikes: arrayRemove(userId),
+        });
+      }
+
+      // 2. Actualizar aura del autor SOLO si hay cambio y no es el mismo usuario
+      if (auraChange !== 0 && authorId !== userId) {
+        const authorRef = doc(db, "users", authorId);
+        batch.update(authorRef, {
+          "stats.aura": increment(auraChange),
+        });
+      }
+
+      await batch.commit();
+
+      return { success: true, auraChange };
+    } catch (err) {
+      console.error("Error reaccionando al post:", err);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -478,83 +529,13 @@ export const usePostActions = () => {
     }
   };
 
-  // Crear nuevo post
-  const createPost = async (postData) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error("Debes iniciar sesión para publicar");
-      }
-
-      // Verificar que el usuario puede publicar (doctor o superior)
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      const userData = userDoc.data();
-
-      if (!["doctor", "moderator", "admin"].includes(userData?.role)) {
-        throw new Error("Solo usuarios verificados pueden publicar");
-      }
-
-      // Preparar imágenes en formato correcto
-      const formattedImages = postData.images || [];
-
-      const newPost = {
-        title: postData.title,
-        content: postData.content,
-        authorId: currentUser.uid,
-        forumId: postData.forumId,
-        createdAt: serverTimestamp(),
-        updatedAt: null,
-        likes: [],
-        dislikes: [],
-        images: formattedImages,
-        stats: {
-          commentCount: 0,
-          viewCount: 0,
-          likeCount: 0,
-          dislikeCount: 0,
-        },
-        status: "active",
-      };
-
-      // Agregar documento a Firestore
-      const postRef = doc(collection(db, "posts"));
-      await setDoc(postRef, newPost);
-
-      // Actualizar estadísticas del foro
-      const forumRef = doc(db, "forums", postData.forumId);
-      await updateDoc(forumRef, {
-        postCount: increment(1),
-        lastPostAt: serverTimestamp(),
-      });
-
-      // Actualizar estadísticas del usuario
-      await updateDoc(doc(db, "users", currentUser.uid), {
-        "stats.postCount": increment(1),
-        "stats.contributionCount": increment(1),
-      });
-
-      console.log("✅ Post creado exitosamente");
-
-      return { success: true, postId: postRef.id };
-    } catch (err) {
-      console.error("Error creando post:", err);
-      setError(err.message);
-      return { success: false, error: err.message };
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return {
-    reactToPost,
+    createPost,
     editPost,
     deletePost,
+    reactToPost,
     uploadImages,
-    createPost,
-    deleteFromCloudinary, // Exportar para uso externo si es necesario
+    deleteFromCloudinary,
     loading,
     error,
     clearError: () => setError(null),

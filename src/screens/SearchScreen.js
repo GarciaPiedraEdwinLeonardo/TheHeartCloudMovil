@@ -13,9 +13,18 @@ import {
   Dimensions,
 } from "react-native";
 import { IconButton, Avatar, Card, Chip, Searchbar } from "react-native-paper";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db, auth } from "../config/firebase";
 import { debounce } from "lodash";
+import PostCard from "../components/posts/PostCard";
 
 const { width } = Dimensions.get("window");
 
@@ -57,7 +66,7 @@ const SearchScreen = ({ navigation }) => {
       try {
         const normalizedSearchTerm = normalizeText(queryText);
 
-        // 1. Buscar publicaciones
+        // 1. Buscar publicaciones ACTIVAS con datos completos
         const postsQuery = query(
           collection(db, "posts"),
           where("status", "==", "active"),
@@ -66,8 +75,9 @@ const SearchScreen = ({ navigation }) => {
         const postsSnapshot = await getDocs(postsQuery);
         const filteredPosts = [];
 
-        postsSnapshot.forEach((doc) => {
-          const post = { id: doc.id, ...doc.data() };
+        for (const postDoc of postsSnapshot.docs) {
+          const postData = postDoc.data();
+          const post = { id: postDoc.id, ...postData };
 
           // Normalizar datos para búsqueda
           const normalizedTitle = normalizeText(post.title);
@@ -78,13 +88,50 @@ const SearchScreen = ({ navigation }) => {
             normalizedContent.includes(normalizedSearchTerm);
 
           if (matchesTitle || matchesContent) {
-            filteredPosts.push({
-              ...post,
-              highlightTitle: post.title,
-              highlightContent: post.content,
-            });
+            // Cargar datos del autor
+            if (post.authorId) {
+              try {
+                const authorDoc = await getDoc(doc(db, "users", post.authorId));
+                if (authorDoc.exists()) {
+                  const authorData = authorDoc.data();
+                  post.authorData = authorData;
+
+                  // Obtener nombre del autor
+                  const authorName =
+                    authorData.name?.name || authorData.email || "Usuario";
+                  const authorLastName = authorData.name?.apellidopat || "";
+                  post.authorName = `${authorName} ${authorLastName}`.trim();
+
+                  post.authorPhoto =
+                    authorData.photoURL || authorData.profileMedia;
+                  post.authorSpecialty = authorData.professionalInfo?.specialty;
+                  post.authorVerified =
+                    authorData.professionalInfo?.verificationStatus ===
+                    "verified";
+                  post.authorEmail = authorData.email;
+                }
+              } catch (error) {
+                console.error("Error cargando autor:", error);
+              }
+            }
+
+            // Cargar datos del foro
+            if (post.forumId) {
+              try {
+                const forumDoc = await getDoc(doc(db, "forums", post.forumId));
+                if (forumDoc.exists()) {
+                  const forumData = forumDoc.data();
+                  post.forumData = { id: forumDoc.id, ...forumData };
+                  post.forumName = forumData.name;
+                }
+              } catch (error) {
+                console.error("Error cargando foro:", error);
+              }
+            }
+
+            filteredPosts.push(post);
           }
-        });
+        }
 
         // 2. Buscar comunidades
         const forumsQuery = query(
@@ -180,6 +227,25 @@ const SearchScreen = ({ navigation }) => {
     setRefreshing(false);
   }, [searchQuery, performSearch]);
 
+  // Handlers para PostCard
+  const handlePostUpdated = () => {
+    performSearch(searchQuery);
+  };
+
+  const handlePostDeleted = () => {
+    performSearch(searchQuery);
+  };
+
+  const navigateToProfile = (userId) => {
+    navigation.navigate("Profile", { userId });
+  };
+
+  const navigateToForum = (forumData) => {
+    if (forumData) {
+      navigation.navigate("Forum", { forum: forumData, forumId: forumData.id });
+    }
+  };
+
   // Renderizar resultados según pestaña activa
   const renderResults = () => {
     const currentResults = results[activeTab];
@@ -269,6 +335,7 @@ const SearchScreen = ({ navigation }) => {
     }
   };
 
+  // NUEVO: Renderizar posts usando PostCard
   const renderPosts = () => (
     <View style={styles.resultsList}>
       <Text style={styles.resultsCount}>
@@ -276,45 +343,19 @@ const SearchScreen = ({ navigation }) => {
         {results.publicaciones.length !== 1 ? "es" : ""} encontrada
         {results.publicaciones.length !== 1 ? "s" : ""}
       </Text>
-      {results.publicaciones.map((post) => (
-        <TouchableOpacity
-          key={post.id}
-          style={styles.resultCard}
-          onPress={() => navigation.navigate("PostDetail", { postId: post.id })}
-        >
-          <Card style={styles.card}>
-            <Card.Content>
-              <View style={styles.postHeader}>
-                <View style={styles.postTypeIndicator}>
-                  <Text style={styles.postTypeText}>PUBLICACIÓN</Text>
-                </View>
-                <Text style={styles.postTitle} numberOfLines={2}>
-                  {post.highlightTitle || "Sin título"}
-                </Text>
-                <Text style={styles.postContent} numberOfLines={3}>
-                  {post.highlightContent?.substring(0, 150)}...
-                </Text>
-              </View>
-              <View style={styles.postFooter}>
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <IconButton icon="comment" size={14} iconColor="#6b7280" />
-                    <Text style={styles.statText}>
-                      {post.stats?.commentCount || 0}
-                    </Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <IconButton icon="heart" size={14} iconColor="#6b7280" />
-                    <Text style={styles.statText}>
-                      {post.likes?.length || 0}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
-        </TouchableOpacity>
-      ))}
+      <View style={styles.postsContainer}>
+        {results.publicaciones.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            onAuthorPress={() => navigateToProfile(post.authorId)}
+            onForumPress={() => navigateToForum(post.forumData)}
+            onViewPost={() => navigation.navigate("Post", { post })}
+            onPostUpdated={handlePostUpdated}
+            onPostDeleted={handlePostDeleted}
+          />
+        ))}
+      </View>
     </View>
   );
 
@@ -488,7 +529,12 @@ const SearchScreen = ({ navigation }) => {
                   activeTab === tab.id && styles.activeResultCountBadge,
                 ]}
               >
-                <Text style={styles.resultCountText}>
+                <Text
+                  style={[
+                    styles.resultCountText,
+                    activeTab === tab.id && styles.activeResultCountText,
+                  ]}
+                >
                   {results[tab.id].length}
                 </Text>
               </View>
@@ -594,8 +640,8 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontWeight: "700",
   },
-  activeResultCountBadge: {
-    backgroundColor: "#2a55ff",
+  activeResultCountText: {
+    color: "white",
   },
   content: {
     flex: 1,
@@ -682,17 +728,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   resultsList: {
-    padding: 16,
+    paddingTop: 16,
   },
   resultsCount: {
     fontSize: 14,
     color: "#64748b",
     fontWeight: "500",
     marginBottom: 16,
-    paddingLeft: 4,
+    paddingLeft: 20,
+  },
+  // NUEVO: Contenedor para PostCards
+  postsContainer: {
+    paddingHorizontal: 16,
   },
   resultCard: {
     marginBottom: 12,
+    marginHorizontal: 16,
   },
   card: {
     borderRadius: 12,
@@ -707,55 +758,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     borderColor: "#dbeafe",
     borderWidth: 1,
-  },
-  // Estilos para posts
-  postHeader: {
-    marginBottom: 12,
-  },
-  postTypeIndicator: {
-    backgroundColor: "#eff6ff",
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 10,
-  },
-  postTypeText: {
-    fontSize: 11,
-    color: "#2a55ff",
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  postTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 8,
-    lineHeight: 24,
-  },
-  postContent: {
-    fontSize: 15,
-    color: "#64748b",
-    lineHeight: 22,
-  },
-  postFooter: {
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    paddingTop: 12,
-  },
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 20,
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statText: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginLeft: -8,
   },
   // Estilos para foros
   forumHeader: {
@@ -790,6 +792,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#f1f5f9",
     paddingTop: 12,
+  },
+  statsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+  },
+  statItem: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   statLabel: {
     fontSize: 12,

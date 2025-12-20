@@ -26,7 +26,6 @@ export const useComments = (postId, commentsLimit = 50, maxDepth = 2) => {
     const q = query(
       collection(db, "comments"),
       where("postId", "==", postId),
-      where("isDeleted", "==", false),
       orderBy("createdAt", "asc"),
       limit(commentsLimit)
     );

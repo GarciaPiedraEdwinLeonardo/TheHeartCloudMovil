@@ -59,7 +59,7 @@ export const usePosts = (forumId, postsLimit = 20) => {
           q = query(
             collection(db, "posts"),
             where("forumId", "==", forumId),
-            where("status", "in", ["active", "pending"]),
+            where("status", "==", "active"),
             orderBy("createdAt", "desc"),
             limit(postsLimit)
           );

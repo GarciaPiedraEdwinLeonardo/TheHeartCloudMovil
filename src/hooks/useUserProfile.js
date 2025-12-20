@@ -30,16 +30,19 @@ export const useUserProfile = (userId) => {
       const userBasicData = userDoc.data();
       console.log("📊 Datos básicos del usuario:", userBasicData);
 
-      // 2. Formatear nombre completo
+      // 2. Formatear nombre completo desde el mapa 'name'
       const nameData = userBasicData.name || {};
       const fullName = `${nameData.name || ""} ${nameData.apellidopat || ""} ${
         nameData.apellidomat || ""
       }`.trim();
 
+      console.log("👤 Nombre completo formateado:", fullName);
+
       // 3. Cargar publicaciones del usuario
       const postsQuery = query(
         collection(db, "posts"),
         where("authorId", "==", userId),
+        where("status", "==", "active"),
         orderBy("createdAt", "desc")
       );
 
@@ -65,12 +68,17 @@ export const useUserProfile = (userId) => {
         postsData.push({
           id: postDoc.id,
           ...postData,
+          // Agregar información del autor al post
+          authorName: fullName,
+          authorPhoto:
+            userBasicData.photoURL || userBasicData.profileMedia || null,
+          authorSpecialty: userBasicData.professionalInfo?.specialty || null,
+          // Para compatibilidad
           tema: forumName,
+          forumName: forumName,
           fecha: postData.createdAt,
-          likes: postData.likes || [],
           titulo: postData.title || postData.content?.substring(0, 50) + "...",
           contenido: postData.content,
-          stats: postData.stats || { commentCount: 0, likeCount: 0 },
         });
       }
 
@@ -168,7 +176,6 @@ export const useUserProfile = (userId) => {
 
             // Contar comentarios del usuario en posts de este foro
             const userCommentsInForum = commentsData.filter((comment) => {
-              // Buscar el post del comentario para obtener el forumId
               const commentPost = postsData.find(
                 (post) => post.id === comment.postId
               );
@@ -197,63 +204,49 @@ export const useUserProfile = (userId) => {
 
       console.log(`👥 Foros cargados: ${userForumsData.length}`);
 
-      // 6. Calcular estadísticas
-      const calculateStatistics = () => {
-        try {
-          // Calcular días activos
-          let daysActive = 1;
-          if (userBasicData.joinDate) {
-            let joinDate;
+      // 6. Usar estadísticas de Firebase directamente (sin calcular)
+      const firebaseStats = userBasicData.stats || {};
 
-            if (userBasicData.joinDate.toDate) {
-              joinDate = userBasicData.joinDate.toDate();
-            } else if (userBasicData.joinDate instanceof Date) {
-              joinDate = userBasicData.joinDate;
-            } else if (typeof userBasicData.joinDate === "string") {
-              joinDate = new Date(userBasicData.joinDate);
-            } else if (typeof userBasicData.joinDate === "number") {
-              joinDate = new Date(userBasicData.joinDate);
-            }
+      // Calcular días activos (único cálculo necesario)
+      let daysActive = 1;
+      if (userBasicData.joinDate) {
+        let joinDate;
 
-            if (joinDate) {
-              const today = new Date();
-              const diffTime = Math.abs(today - joinDate);
-              daysActive = Math.max(
-                1,
-                Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-              );
-            }
-          }
-
-          return {
-            postsCount: postsData.length,
-            commentsCount: commentsData.length,
-            communitiesCount: userForumsData.length,
-            aura: userBasicData.stats?.aura || 0,
-            contributionCount: userBasicData.stats?.contributionCount || 0,
-            daysActive: daysActive,
-            // Estadísticas adicionales para compatibilidad
-            publicaciones: postsData.length,
-            comentarios: commentsData.length,
-            temasParticipacion: userForumsData.length,
-          };
-        } catch (error) {
-          console.error("Error calculando estadísticas:", error);
-          return {
-            postsCount: 0,
-            commentsCount: 0,
-            communitiesCount: 0,
-            aura: 0,
-            contributionCount: 0,
-            daysActive: 1,
-            publicaciones: 0,
-            comentarios: 0,
-            temasParticipacion: 0,
-          };
+        if (userBasicData.joinDate.toDate) {
+          joinDate = userBasicData.joinDate.toDate();
+        } else if (userBasicData.joinDate instanceof Date) {
+          joinDate = userBasicData.joinDate;
+        } else if (typeof userBasicData.joinDate === "string") {
+          joinDate = new Date(userBasicData.joinDate);
+        } else if (typeof userBasicData.joinDate === "number") {
+          joinDate = new Date(userBasicData.joinDate);
         }
+
+        if (joinDate) {
+          const today = new Date();
+          const diffTime = Math.abs(today - joinDate);
+          daysActive = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        }
+      }
+
+      // Usar estadísticas de Firebase directamente
+      const stats = {
+        // Usar valores de Firebase
+        postsCount: firebaseStats.postCount || 0,
+        commentsCount: firebaseStats.commentCount || 0,
+        communitiesCount:
+          firebaseStats.joinedForumsCount || firebaseStats.forumCount || 0,
+        aura: firebaseStats.aura || 0,
+        contributionCount: firebaseStats.contributionCount || 0,
+        daysActive: daysActive,
+        // Para compatibilidad con componentes existentes
+        publicaciones: firebaseStats.postCount || 0,
+        comentarios: firebaseStats.commentCount || 0,
+        temasParticipacion:
+          firebaseStats.joinedForumsCount || firebaseStats.forumCount || 0,
       };
 
-      const stats = calculateStatistics();
+      console.log("📊 Estadísticas desde Firebase:", stats);
 
       // 7. Formatear datos completos
       const formattedData = {
@@ -274,8 +267,9 @@ export const useUserProfile = (userId) => {
           userBasicData.professionalInfo?.specialty || "No especificada",
         professionalInfo: userBasicData.professionalInfo || {},
 
-        // Foto de perfil
-        photoURL: userBasicData.photoURL || "https://via.placeholder.com/150",
+        // Foto de perfil - priorizar profileMedia sobre photoURL
+        photoURL: userBasicData.profileMedia || userBasicData.photoURL || null,
+        profileMedia: userBasicData.profileMedia || null,
 
         // Fechas
         joinDate: userBasicData.joinDate,
@@ -315,10 +309,12 @@ export const useUserProfile = (userId) => {
       };
 
       console.log("✅ Datos formateados:", {
+        nombreCompleto: formattedData.nombreCompleto,
         posts: formattedData.posts?.length || 0,
         comments: formattedData.comments?.length || 0,
         communities: formattedData.communities?.length || 0,
         photoURL: formattedData.photoURL,
+        stats: formattedData.stats,
       });
 
       setUserData(formattedData);
@@ -346,6 +342,7 @@ export const useUserProfile = (userId) => {
       return {
         ...prev,
         photoURL: photoUrl,
+        profileMedia: photoUrl,
       };
     });
   };
