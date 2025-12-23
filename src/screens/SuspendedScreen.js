@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Alert,
-  ScrollView,
-} from "react-native";
+import { View, Text, StyleSheet, Alert, ScrollView } from "react-native";
 import {
   IconButton,
   Card,
@@ -17,12 +9,9 @@ import {
 } from "react-native-paper";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../config/firebase";
-import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
-
-const { width, height } = Dimensions.get("window");
+import { doc, getDoc } from "firebase/firestore";
 
 const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
-  // Obtener userData de los parámetros de navegación
   const { userData: routeUserData } = route.params || {};
   const [timeLeft, setTimeLeft] = useState("");
   const [isPermanent, setIsPermanent] = useState(false);
@@ -30,7 +19,7 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
   const [localUserData, setLocalUserData] = useState(routeUserData);
   const [timePercentage, setTimePercentage] = useState(0);
 
-  // Si no tenemos userData de los parámetros, intentar cargarlo
+  // Cargar datos del usuario si no están disponibles
   useEffect(() => {
     const loadUserData = async () => {
       if (!localUserData && auth.currentUser) {
@@ -50,15 +39,30 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
     loadUserData();
   }, []);
 
+  // 🔥 VALIDACIÓN: Si no está suspendido, no debería estar aquí
+  useEffect(() => {
+    if (localUserData && !localUserData.suspension?.isSuspended) {
+      console.log(
+        "⚠️ Usuario NO suspendido en SuspendedScreen - App.js debería manejar la navegación"
+      );
+      // No hacer nada, App.js manejará la navegación automáticamente
+    }
+  }, [localUserData]);
+
   useEffect(() => {
     if (!localUserData?.suspension) {
       console.log("No hay datos de suspensión");
       return;
     }
 
+    // 🔥 VALIDACIÓN: Si isSuspended es false, no mostrar como suspendido
+    if (localUserData.suspension.isSuspended === false) {
+      console.log("⚠️ Suspensión marcada como false, no debería estar aquí");
+      return;
+    }
+
     console.log("Datos de suspensión:", localUserData.suspension);
 
-    // Verificar si la suspensión es permanente
     const permanent = !localUserData.suspension.endDate;
     setIsPermanent(permanent);
     console.log("Es permanente:", permanent);
@@ -71,7 +75,6 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
       let endDate;
       let startDate;
 
-      // Manejar diferentes formatos de fecha
       if (localUserData.suspension.endDate?.toDate) {
         endDate = localUserData.suspension.endDate.toDate();
       } else if (localUserData.suspension.endDate?.seconds) {
@@ -89,7 +92,7 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
       } else if (localUserData.suspension.startDate) {
         startDate = new Date(localUserData.suspension.startDate);
       } else {
-        startDate = new Date(); // Si no hay startDate, usar ahora
+        startDate = new Date();
       }
 
       const now = new Date();
@@ -97,7 +100,6 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
       const elapsed = now - startDate;
       const remaining = endDate - now;
 
-      // Calcular porcentaje
       const percentage = Math.min(
         Math.max((elapsed / totalDuration) * 100, 0),
         100
@@ -142,69 +144,9 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
 
     updateTimer();
 
-    // Verificar y limpiar suspensión expirada automáticamente
-    const checkExpiredSuspension = async () => {
-      if (permanent) return;
-
-      let endDate;
-      if (localUserData.suspension.endDate?.toDate) {
-        endDate = localUserData.suspension.endDate.toDate();
-      } else if (localUserData.suspension.endDate?.seconds) {
-        endDate = new Date(localUserData.suspension.endDate.seconds * 1000);
-      } else if (localUserData.suspension.endDate) {
-        endDate = new Date(localUserData.suspension.endDate);
-      } else {
-        return;
-      }
-
-      const now = new Date();
-
-      if (now >= endDate) {
-        try {
-          console.log("Suspensión expirada - limpiando automáticamente");
-          setLoading(true);
-          await updateDoc(doc(db, "users", auth.currentUser.uid), {
-            "suspension.isSuspended": false,
-            "suspension.reason": null,
-            "suspension.startDate": null,
-            "suspension.endDate": null,
-            "suspension.suspendedBy": null,
-            "suspension.autoRemovedAt": serverTimestamp(),
-          });
-
-          // Redirigir al login
-          Alert.alert(
-            "✅ Suspensión expirada",
-            "Tu suspensión ha expirado. Por favor, inicia sesión nuevamente.",
-            [
-              {
-                text: "Iniciar Sesión",
-                onPress: () => {
-                  signOut(auth);
-                  navigation.replace("Login");
-                },
-              },
-            ]
-          );
-        } catch (error) {
-          console.error("Error limpiando suspensión:", error);
-          Alert.alert(
-            "Error",
-            "No se pudo limpiar la suspensión automáticamente"
-          );
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    checkExpiredSuspension();
-
-    // Actualizar cada segundo si no es permanente
     if (!permanent) {
       const interval = setInterval(() => {
         updateTimer();
-        checkExpiredSuspension();
       }, 1000);
 
       return () => clearInterval(interval);
@@ -229,6 +171,65 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
     }
   };
 
+  // 🔥 SIMPLIFICADO: Solo recargar token y mostrar mensaje
+  const handleCheckAgain = async () => {
+    if (!auth.currentUser) {
+      Alert.alert(
+        "Error",
+        "No estás autenticado. Por favor, inicia sesión nuevamente.",
+        [{ text: "OK", onPress: () => navigation.replace("Login") }]
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Forzar recarga del usuario y token
+      await auth.currentUser.reload();
+      await auth.currentUser.getIdToken(true);
+
+      // Recargar datos locales para mostrar info actualizada
+      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setLocalUserData(userData);
+
+        if (!userData.suspension?.isSuspended) {
+          Alert.alert(
+            "✅ Estado Actualizado",
+            "Tu suspensión ha sido removida. La aplicación se actualizará automáticamente.",
+            [{ text: "OK" }]
+          );
+        } else {
+          const endDate =
+            userData.suspension.endDate?.toDate?.() ||
+            (userData.suspension.endDate?.seconds
+              ? new Date(userData.suspension.endDate.seconds * 1000)
+              : null);
+
+          if (endDate && new Date() >= endDate) {
+            Alert.alert(
+              "⏰ Suspensión Expirada",
+              "Tu suspensión ha expirado. La aplicación se actualizará automáticamente en unos segundos.",
+              [{ text: "OK" }]
+            );
+          } else {
+            Alert.alert(
+              "⚠️ Suspensión Activa",
+              "Tu suspensión aún está activa. La aplicación verifica automáticamente cada pocos segundos.",
+              [{ text: "OK" }]
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error verificando suspensión:", error);
+      Alert.alert("Error", "No se pudo verificar el estado de la suspensión");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return "No disponible";
     try {
@@ -250,54 +251,6 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
       });
     } catch {
       return "Fecha no disponible";
-    }
-  };
-
-  const handleCheckAgain = async () => {
-    if (!auth.currentUser) return;
-
-    setLoading(true);
-    try {
-      // Recargar datos del usuario
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setLocalUserData(userData);
-
-        // Verificar si la suspensión ya expiró
-        if (userData.suspension?.isSuspended) {
-          const endDate = userData.suspension.endDate?.toDate
-            ? userData.suspension.endDate.toDate()
-            : userData.suspension.endDate?.seconds
-            ? new Date(userData.suspension.endDate.seconds * 1000)
-            : null;
-
-          if (endDate && new Date() >= endDate) {
-            Alert.alert(
-              "Suspensión expirada",
-              "Tu suspensión ha expirado. Por favor, reinicia la aplicación.",
-              [{ text: "OK" }]
-            );
-          } else {
-            Alert.alert(
-              "Suspensión activa",
-              "Tu suspensión aún está activa. Por favor, espera hasta que expire.",
-              [{ text: "OK" }]
-            );
-          }
-        } else {
-          Alert.alert(
-            "Suspensión removida",
-            "Tu suspensión ha sido removida. Por favor, reinicia la aplicación.",
-            [{ text: "OK", onPress: () => navigation.replace("Login") }]
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Error verificando suspensión:", error);
-      Alert.alert("Error", "No se pudo verificar el estado de la suspensión");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -328,32 +281,29 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
     );
   }
 
-  // Si el usuario no está suspendido (por si acaso), redirigir
-  if (!localUserData.suspension?.isSuspended) {
+  // 🔥 NUEVO: Mostrar pantalla de transición si no está suspendido
+  if (localUserData && !localUserData.suspension?.isSuspended) {
     return (
-      <View style={styles.notSuspendedContainer}>
+      <View style={styles.transitionContainer}>
         <View style={styles.safeArea}>
-          <View style={styles.notSuspendedContent}>
-            <IconButton
-              icon="check-circle"
-              size={80}
-              iconColor="#10b981"
-              style={styles.successIcon}
-            />
-            <Text style={styles.notSuspendedTitle}>Cuenta Activa</Text>
-            <Text style={styles.notSuspendedText}>
-              Tu cuenta no está suspendida. Puedes acceder normalmente.
+          <View style={styles.transitionContent}>
+            <View style={styles.transitionIconCircle}>
+              <IconButton
+                icon="check-circle"
+                size={64}
+                iconColor="#10b981"
+                style={styles.transitionIcon}
+              />
+            </View>
+            <Text style={styles.transitionTitle}>¡Suspensión Removida!</Text>
+            <Text style={styles.transitionText}>
+              Redirigiendo a la aplicación...
             </Text>
-            <Button
-              mode="contained"
-              onPress={() => navigation.replace("Home")}
-              style={styles.goHomeButton}
-              contentStyle={styles.buttonContent}
-              labelStyle={styles.buttonLabel}
-              icon="home"
-            >
-              Ir al Inicio
-            </Button>
+            <ActivityIndicator
+              size="large"
+              color="#10b981"
+              style={styles.spinner}
+            />
           </View>
         </View>
       </View>
@@ -370,7 +320,7 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
         {/* Encabezado */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>TheHeartCloud</Text>
+            <Text style={styles.logoText}>TheHeartcloud</Text>
             <Text style={styles.logoSubtitle}>Comunidad Médica</Text>
           </View>
         </View>
@@ -521,10 +471,31 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
                 <Text style={styles.additionalInfoText}>
                   {isPermanent
                     ? "Si crees que esta suspensión es un error, puedes contactar al soporte para apelar esta decisión."
-                    : "Mantén la aplicación abierta para ver el tiempo restante. Tu acceso se restaurará automáticamente."}
+                    : "La aplicación verifica automáticamente cada pocos segundos si tu suspensión ha expirado. No necesitas hacer nada."}
                 </Text>
               </View>
             </View>
+
+            {/* 🔥 NUEVO: Banner de verificación automática */}
+            {!isPermanent && (
+              <View style={styles.autoCheckBanner}>
+                <IconButton
+                  icon="reload"
+                  size={20}
+                  iconColor="#059669"
+                  style={styles.autoCheckIcon}
+                />
+                <View style={styles.autoCheckTextContainer}>
+                  <Text style={styles.autoCheckTitle}>
+                    Verificación automática activa
+                  </Text>
+                  <Text style={styles.autoCheckText}>
+                    Estamos verificando tu estado cada 3 segundos
+                  </Text>
+                </View>
+                <ActivityIndicator size="small" color="#059669" />
+              </View>
+            )}
 
             {/* Acciones */}
             <View style={styles.actionsContainer}>
@@ -551,7 +522,7 @@ const SuspendedScreen = ({ route, navigation, onLogoutSuccess }) => {
                   icon="reload"
                   disabled={loading}
                 >
-                  Verificar estado
+                  Verificar ahora
                 </Button>
               )}
             </View>
@@ -603,42 +574,42 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 20,
   },
-  notSuspendedContainer: {
+  // 🔥 NUEVO: Estilos para pantalla de transición
+  transitionContainer: {
     flex: 1,
     backgroundColor: "#f0fdf4",
   },
-  notSuspendedContent: {
+  transitionContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
-  successIcon: {
-    margin: 0,
-    marginBottom: 20,
+  transitionIconCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     backgroundColor: "#dcfce7",
-    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
   },
-  notSuspendedTitle: {
+  transitionIcon: {
+    margin: 0,
+  },
+  transitionTitle: {
     fontSize: 28,
     fontWeight: "700",
     color: "#166534",
     marginBottom: 12,
+    textAlign: "center",
   },
-  notSuspendedText: {
+  transitionText: {
     fontSize: 16,
     color: "#4b5563",
     textAlign: "center",
     marginBottom: 30,
-    lineHeight: 24,
   },
-  goHomeButton: {
-    backgroundColor: "#10b981",
-    borderRadius: 12,
-    width: "100%",
-    maxWidth: 300,
-  },
-  // Header
   header: {
     alignItems: "center",
     marginBottom: 24,
@@ -657,7 +628,6 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     marginTop: 4,
   },
-  // Card
   card: {
     borderRadius: 20,
     backgroundColor: "white",
@@ -671,7 +641,6 @@ const styles = StyleSheet.create({
   cardContent: {
     padding: 24,
   },
-  // Icon
   iconContainer: {
     alignItems: "center",
     marginBottom: 16,
@@ -687,7 +656,6 @@ const styles = StyleSheet.create({
   icon: {
     margin: 0,
   },
-  // Title
   title: {
     fontSize: 28,
     fontWeight: "700",
@@ -696,7 +664,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     letterSpacing: -0.5,
   },
-  // Message
   messageContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -724,7 +691,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     lineHeight: 20,
   },
-  // Info Section
   infoSection: {
     marginBottom: 24,
   },
@@ -765,7 +731,6 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "700",
   },
-  // Progress Bar
   progressContainer: {
     marginTop: 12,
   },
@@ -782,14 +747,13 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  // Additional Info
   additionalInfo: {
     flexDirection: "row",
     alignItems: "flex-start",
     backgroundColor: "#dbeafe",
     borderRadius: 12,
     padding: 16,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   additionalInfoIcon: {
     margin: 0,
@@ -810,7 +774,35 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     lineHeight: 20,
   },
-  // Actions
+  // 🔥 NUEVO: Estilos para el banner de verificación automática
+  autoCheckBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#d1fae5",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#6ee7b7",
+  },
+  autoCheckIcon: {
+    margin: 0,
+    marginRight: 12,
+  },
+  autoCheckTextContainer: {
+    flex: 1,
+  },
+  autoCheckTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#065f46",
+    marginBottom: 2,
+  },
+  autoCheckText: {
+    fontSize: 12,
+    color: "#047857",
+    fontWeight: "500",
+  },
   actionsContainer: {
     marginBottom: 24,
   },
@@ -837,23 +829,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
     fontWeight: "600",
-  },
-  // Footer
-  footer: {
-    alignItems: "center",
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-  },
-  footerText: {
-    fontSize: 13,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  footerCopyright: {
-    fontSize: 12,
-    color: "#9ca3af",
   },
 });
 

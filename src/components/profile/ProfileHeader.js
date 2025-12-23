@@ -25,7 +25,7 @@ const ProfileHeader = ({
   };
 
   // Obtener datos del usuario
-  const userName = userData?.nombreCompleto || "Usuario";
+  const userName = userData?.nombreCompleto || userData?.email;
   const specialty =
     userData?.especialidad ||
     userData?.professionalInfo?.specialty ||

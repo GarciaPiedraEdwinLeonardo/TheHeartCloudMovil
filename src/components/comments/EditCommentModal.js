@@ -414,46 +414,6 @@ const EditCommentModal = ({ visible, onClose, comment, onCommentUpdated }) => {
               {renderCharIndicator()}
             </View>
 
-            {/* Información sobre ediciones */}
-            <View style={styles.infoContainer}>
-              <View style={styles.infoHeader}>
-                <IconButton icon="information" size={16} iconColor="#3b82f6" />
-                <Text style={styles.infoTitle}>Información importante</Text>
-              </View>
-              <View style={styles.infoList}>
-                <View style={styles.infoItem}>
-                  <IconButton
-                    icon="circle-small"
-                    size={16}
-                    iconColor="#6b7280"
-                  />
-                  <Text style={styles.infoText}>
-                    Las ediciones se registrarán en el historial
-                  </Text>
-                </View>
-                <View style={styles.infoItem}>
-                  <IconButton
-                    icon="circle-small"
-                    size={16}
-                    iconColor="#6b7280"
-                  />
-                  <Text style={styles.infoText}>
-                    Solo tú puedes ver tus ediciones anteriores
-                  </Text>
-                </View>
-                <View style={styles.infoItem}>
-                  <IconButton
-                    icon="circle-small"
-                    size={16}
-                    iconColor="#6b7280"
-                  />
-                  <Text style={styles.infoText}>
-                    No se puede editar un comentario eliminado
-                  </Text>
-                </View>
-              </View>
-            </View>
-
             {/* Espacio para el teclado */}
             <View style={{ height: 20 }} />
           </ScrollView>
@@ -690,40 +650,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#ef4444",
     fontStyle: "italic",
-  },
-  infoContainer: {
-    backgroundColor: "#f0f9ff",
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-  },
-  infoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0369a1",
-    marginLeft: 8,
-  },
-  infoList: {
-    marginLeft: 8,
-  },
-  infoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  infoText: {
-    fontSize: 12,
-    color: "#0c4a6e",
-    marginLeft: 4,
-    flex: 1,
   },
   footer: {
     flexDirection: "row",

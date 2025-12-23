@@ -60,6 +60,7 @@ const ForumScreen = ({ navigation, route }) => {
       userData?.role === "admin") &&
     !isUserBanned;
   const requiresApproval = forumDetails?.membershipSettings?.requiresApproval;
+  const requiresPostApproval = forumDetails?.requiresPostApproval;
   const isUserPending = hasPendingRequest && !userMembership.isMember;
 
   // Cargar datos iniciales
@@ -543,9 +544,8 @@ const ForumScreen = ({ navigation, route }) => {
             </View>
           ) : (
             <PostList
+              key={posts.id}
               posts={posts}
-              onPostPress={navigateToPost}
-              onCommentClick={navigateToPost}
               onAuthorPress={navigateToProfile}
               onForumPress={(forumId) => {
                 // Ya estamos en el foro, no hacer nada
@@ -568,7 +568,7 @@ const ForumScreen = ({ navigation, route }) => {
         onClose={() => setShowCreatePostModal(false)}
         forumId={forumDetails.id}
         forumName={forumDetails.name}
-        requiresPostApproval={requiresApproval && !isOwner && !isModerator}
+        requiresPostApproval={requiresPostApproval && !isOwner && !isModerator}
         canPostWithoutApproval={isOwner || isModerator}
         onPostCreated={handlePostCreated}
       />

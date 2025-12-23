@@ -157,56 +157,6 @@ const HomeScreen = ({ navigation }) => {
       console.error("Error cargando foros del usuario:", error);
     }
   };
-
-  useEffect(() => {
-    const checkSuspension = async () => {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-
-          // Verificar suspensión
-          if (userData.suspension?.isSuspended) {
-            const endDate = userData.suspension.endDate?.toDate();
-            const now = new Date();
-
-            // Si la suspensión expiró, limpiarla
-            if (endDate && now >= endDate) {
-              try {
-                await updateDoc(doc(db, "users", currentUser.uid), {
-                  "suspension.isSuspended": false,
-                  "suspension.reason": null,
-                  "suspension.startDate": null,
-                  "suspension.endDate": null,
-                  "suspension.suspendedBy": null,
-                  "suspension.autoRemovedAt": serverTimestamp(),
-                });
-
-                // Recargar datos
-                const updatedDoc = await getDoc(
-                  doc(db, "users", currentUser.uid)
-                );
-                if (updatedDoc.exists()) {
-                  setUserData(updatedDoc.data());
-                }
-              } catch (error) {
-                console.error("Error limpiando suspensión:", error);
-              }
-            } else {
-              // Si está suspendido, navegar a la pantalla de suspensión
-              navigation.replace("Suspended", { userData: userData });
-              return;
-            }
-          }
-        }
-      }
-    };
-
-    loadAllData();
-    checkSuspension();
-  }, []);
-
   const onRefresh = () => {
     setRefreshing(true);
     loadAllData().finally(() => setRefreshing(false));
@@ -236,10 +186,6 @@ const HomeScreen = ({ navigation }) => {
     } else {
       Alert.alert("Información", "Este foro no está disponible");
     }
-  };
-
-  const navigateToPost = (postData) => {
-    navigation.navigate("Post", { post: postData });
   };
 
   // Handlers para refrescar datos después de acciones en PostCard
@@ -281,7 +227,6 @@ const HomeScreen = ({ navigation }) => {
           post={post}
           onAuthorPress={() => navigateToProfile(post.authorId)}
           onForumPress={() => navigateToForum(post.forumData)}
-          onViewPost={() => navigateToPost(post)}
           onPostUpdated={handlePostUpdated}
           onPostDeleted={handlePostDeleted}
         />
@@ -386,7 +331,7 @@ const HomeScreen = ({ navigation }) => {
             {/* MIS COMUNIDADES - SOLO ESTO */}
             <Text style={styles.sidebarSectionTitle}>Mis comunidades</Text>
 
-            {userForums.length > 0 ? (
+            {userForums.length > 0 &&
               userForums.map((forum) => (
                 <TouchableOpacity
                   key={forum.id}
@@ -413,30 +358,7 @@ const HomeScreen = ({ navigation }) => {
                     {forum.memberCount || 0} miembros
                   </Text>
                 </TouchableOpacity>
-              ))
-            ) : (
-              <View style={styles.noForumsContainer}>
-                <IconButton
-                  icon="forum-outline"
-                  size={24}
-                  iconColor="#cbd5e1"
-                />
-                <Text style={styles.noForumsText}>
-                  No has unido a comunidades
-                </Text>
-                <TouchableOpacity
-                  style={styles.joinForumsButton}
-                  onPress={() => {
-                    navigation.navigate("Forums");
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <Text style={styles.joinForumsButtonText}>
-                    Explorar comunidades
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              ))}
 
             <View style={styles.sidebarDivider} />
 

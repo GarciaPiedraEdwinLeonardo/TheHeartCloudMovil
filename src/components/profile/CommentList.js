@@ -61,11 +61,7 @@ const CommentList = ({ comments, onCommentPress }) => {
     const shouldShowExpand = comment.content && comment.content.length > 150;
 
     return (
-      <TouchableOpacity
-        key={comment.id}
-        style={styles.commentCard}
-        onPress={() => onCommentPress && onCommentPress(comment)}
-      >
+      <TouchableOpacity key={comment.id} style={styles.commentCard}>
         <View style={styles.card}>
           {/* Título del post */}
           {comment.postTitle && (
@@ -217,20 +213,25 @@ const styles = StyleSheet.create({
     color: "#3b82f6",
     fontWeight: "500",
   },
+
   infoContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
+    gap: 8,
   },
   commenterName: {
     fontSize: 13,
     fontWeight: "600",
     color: "#374151",
+    flex: 1,
+    flexShrink: 1,
   },
   commentDate: {
     fontSize: 12,
     color: "#9ca3af",
+    flexShrink: 0,
   },
   likesContainer: {
     flexDirection: "row",

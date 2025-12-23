@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
@@ -28,6 +28,98 @@ function App() {
   const [checkingSuspension, setCheckingSuspension] = useState(true);
   const [isSuspended, setIsSuspended] = useState(false);
 
+  // 🔥 NUEVO: Ref para el intervalo de polling
+  const pollingIntervalRef = useRef(null);
+
+  // 🔥 VALIDACIÓN EXTRA: Verificar coherencia entre isSuspended y userData
+  // Este useEffect debe estar ANTES de cualquier lógica de render condicional
+  useEffect(() => {
+    if (isSuspended && userData && !userData.suspension?.isSuspended) {
+      console.log(
+        "⚠️ Inconsistencia detectada: isSuspended=true pero userData dice false"
+      );
+      console.log("Corrigiendo estado...");
+      setIsSuspended(false);
+    }
+  }, [isSuspended, userData]);
+
+  // 🔥 NUEVO: Función para verificar el estado de suspensión
+  const checkSuspensionStatus = async (userId) => {
+    try {
+      console.log("🔄 Verificando estado de suspensión...");
+      const userDoc = await getDoc(doc(db, "users", userId));
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+
+        // 🔥 CRÍTICO: Verificar si la suspensión fue removida
+        if (!userData.suspension?.isSuspended) {
+          console.log("✅ Suspensión removida - actualizando estado");
+
+          // 🔥 IMPORTANTE: Actualizar PRIMERO isSuspended para que el render cambie
+          setIsSuspended(false);
+          // Luego actualizar userData
+          setUserData(userData);
+
+          // Limpiar el intervalo cuando se detecta el cambio
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+            console.log("🛑 Polling detenido");
+          }
+          return true; // Suspensión removida
+        }
+
+        // Verificar si la suspensión expiró
+        if (userData.suspension?.endDate) {
+          const endDate =
+            userData.suspension.endDate.toDate?.() ||
+            new Date(userData.suspension.endDate.seconds * 1000);
+          const now = new Date();
+
+          if (now >= endDate) {
+            console.log("⏰ Suspensión expirada - limpiando automáticamente");
+
+            // Limpiar suspensión en Firestore
+            await updateDoc(doc(db, "users", userId), {
+              "suspension.isSuspended": false,
+              "suspension.reason": null,
+              "suspension.startDate": null,
+              "suspension.endDate": null,
+              "suspension.suspendedBy": null,
+              "suspension.autoRemovedAt": serverTimestamp(),
+            });
+
+            // Recargar datos actualizados
+            const updatedDoc = await getDoc(doc(db, "users", userId));
+            if (updatedDoc.exists()) {
+              const updatedUserData = updatedDoc.data();
+              // 🔥 IMPORTANTE: Actualizar PRIMERO isSuspended, luego userData
+              setIsSuspended(false);
+              setUserData(updatedUserData);
+
+              // Limpiar el intervalo
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+                console.log("🛑 Polling detenido");
+              }
+              return true; // Suspensión expirada y limpiada
+            }
+          }
+        }
+
+        // Actualizar userData pero mantener suspensión
+        setUserData(userData);
+      }
+
+      return false; // Suspensión sigue activa
+    } catch (error) {
+      console.error("❌ Error verificando suspensión:", error);
+      return false;
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
@@ -36,7 +128,6 @@ function App() {
           await firebaseUser.reload();
           const currentUser = auth.currentUser;
 
-          // 🔥 VERIFICACIÓN CRÍTICA: Asegurar que currentUser existe 🔥
           if (!currentUser) {
             console.log(
               "Usuario no disponible después de reload, limpiando estado..."
@@ -49,16 +140,12 @@ function App() {
             return;
           }
 
-          // 🔥 Obtener proveedores del usuario (solo si currentUser existe) 🔥
           const providerData = currentUser.providerData || [];
           const isGoogleUser = providerData.some(
             (provider) => provider.providerId === "google.com"
           );
 
-          // 🔥 SOLUCIÓN CORREGIDA: Solo requerir verificación para usuarios NO de Google 🔥
-          // Usuarios de Google pueden acceder sin verificación de email
           if (!currentUser.emailVerified && !isGoogleUser) {
-            // Email no verificado y NO es de Google - Cerrar sesión automáticamente
             console.log(
               "Usuario no verificado (no Google), cerrando sesión..."
             );
@@ -68,7 +155,6 @@ function App() {
             setCheckingVerification(false);
             setCheckingSuspension(false);
           } else {
-            // Email verificado o es usuario de Google - continuar con el flujo
             console.log(
               "Usuario verificado o es de Google, verificando suspensión..."
             );
@@ -102,7 +188,6 @@ function App() {
                         "suspension.autoRemovedAt": serverTimestamp(),
                       });
 
-                      // Recargar datos actualizados
                       const updatedDoc = await getDoc(
                         doc(db, "users", currentUser.uid)
                       );
@@ -118,7 +203,6 @@ function App() {
                       );
                     }
                   } else {
-                    // Usuario suspendido activamente
                     console.log(
                       "Usuario suspendido, mostrando pantalla de suspensión"
                     );
@@ -140,7 +224,6 @@ function App() {
             }
           }
         } else {
-          // No hay usuario autenticado
           console.log("No hay usuario autenticado");
           setUser(null);
           setUserData(null);
@@ -163,8 +246,46 @@ function App() {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      // Limpiar el intervalo al desmontar
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
   }, [initializing]);
+
+  // 🔥 NUEVO: Efecto separado para manejar el polling cuando está suspendido
+  useEffect(() => {
+    // Limpiar cualquier intervalo existente primero
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    // Solo iniciar polling si el usuario está suspendido
+    if (isSuspended && user?.uid) {
+      console.log("🚀 Iniciando polling para verificar cambios en suspensión");
+
+      // Verificar inmediatamente al inicio
+      checkSuspensionStatus(user.uid);
+
+      // Luego verificar cada 3 segundos
+      pollingIntervalRef.current = setInterval(() => {
+        checkSuspensionStatus(user.uid);
+      }, 3000); // Verificar cada 3 segundos
+    }
+
+    // Limpiar al desmontar o cuando cambien las dependencias
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+        console.log("🛑 Polling limpiado por cambio de dependencias");
+      }
+    };
+  }, [isSuspended, user?.uid]); // Solo depender de isSuspended y user.uid
 
   // Mostrar loading mientras verifica
   if (checkingVerification || checkingSuspension || initializing) {
@@ -187,17 +308,28 @@ function App() {
     user: !!user,
     isSuspended,
     userData: !!userData,
+    suspensionData: userData?.suspension,
   });
+
+  // 🔥 Log de decisión de render
+  if (!user) {
+    console.log("🔵 Renderizando: Pantallas de autenticación (no user)");
+  } else if (isSuspended) {
+    console.log("🔴 Renderizando: SuspendedScreen (isSuspended=true)");
+  } else {
+    console.log("🟢 Renderizando: Pantallas principales (Home)");
+  }
 
   // Renderizar pantallas según estado
   return (
     <PaperProvider>
       <AuthProvider>
-        <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <NavigationContainer key={`container-${user?.uid}-${isSuspended}`}>
+          <Stack.Navigator
+            screenOptions={{ headerShown: false }}
+            key={`nav-${user?.uid}-${isSuspended}`} // 🔥 Clave única para forzar re-mount
+          >
             {!user ? (
-              // Usuario NO autenticado - mostrar pantallas de autenticación
-              // Esto incluye cuando el usuario cierra sesión desde SuspendedScreen
               <>
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Register" component={RegisterScreen} />
@@ -216,15 +348,12 @@ function App() {
                 />
               </>
             ) : isSuspended ? (
-              // Usuario autenticado pero SUSPENDIDO
-              // Solo mostrar pantalla de suspensión
               <Stack.Screen name="Suspended">
                 {(props) => (
                   <SuspendedScreen
                     {...props}
                     userData={userData}
                     onLogoutSuccess={() => {
-                      // Cuando se cierra sesión exitosamente
                       setUser(null);
                       setUserData(null);
                       setIsSuspended(false);
@@ -233,8 +362,6 @@ function App() {
                 )}
               </Stack.Screen>
             ) : (
-              // Usuario autenticado, VERIFICADO o es de Google y NO SUSPENDIDO
-              // Mostrar pantallas principales
               <>
                 <Stack.Screen name="Home" component={HomeScreen} />
                 <Stack.Screen
@@ -258,7 +385,6 @@ function App() {
                     animation: "slide_from_bottom",
                   }}
                 />
-                {/* Agregar pantalla de suspensión para navegación interna */}
                 <Stack.Screen
                   name="Suspended"
                   component={SuspendedScreen}

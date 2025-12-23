@@ -255,16 +255,20 @@ export const useUserProfile = (userId) => {
         email: userBasicData.email,
 
         // Información personal
-        nombreCompleto: fullName || "Usuario",
+        nombreCompleto: fullName,
         name: nameData.name || "",
         apellidopat: nameData.apellidopat || "",
         apellidomat: nameData.apellidomat || "",
 
         // Información profesional
         especialidad:
-          userBasicData.professionalInfo?.specialty || "No especificada",
+          userBasicData.professionalInfo?.specialty ||
+          "No Verificado" ||
+          "No especificada",
         specialty:
-          userBasicData.professionalInfo?.specialty || "No especificada",
+          userBasicData.professionalInfo?.specialty ||
+          "No Verificado" ||
+          "No especificada",
         professionalInfo: userBasicData.professionalInfo || {},
 
         // Foto de perfil - priorizar profileMedia sobre photoURL
