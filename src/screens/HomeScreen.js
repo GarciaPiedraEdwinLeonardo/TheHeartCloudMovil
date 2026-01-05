@@ -43,6 +43,20 @@ const HomeScreen = ({ navigation }) => {
   const [userForums, setUserForums] = useState([]); // Foros del usuario
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    console.log("🚀 HomeScreen montado - cargando datos iniciales");
+    loadAllData();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      console.log("🔄 HomeScreen enfocado - recargando datos");
+      loadAllData();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   // Cargar datos del usuario y TODOS los posts
   const loadAllData = async () => {
     try {

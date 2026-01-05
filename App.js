@@ -140,6 +140,26 @@ function App() {
             return;
           }
 
+          try {
+            const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+            if (!userDoc.exists()) {
+              console.log(
+                "❌ Usuario eliminado de Firestore, cerrando sesión..."
+              );
+              await auth.signOut();
+              setUser(null);
+              setUserData(null);
+              setIsSuspended(false);
+              setCheckingVerification(false);
+              setCheckingSuspension(false);
+              return;
+            }
+          } catch (error) {
+            console.error("Error verificando usuario en Firestore:", error);
+            // Si hay error de red, continuar pero mostrar warning
+            console.warn("⚠️ No se pudo verificar el usuario, continuando...");
+          }
+
           const providerData = currentUser.providerData || [];
           const isGoogleUser = providerData.some(
             (provider) => provider.providerId === "google.com"
@@ -309,6 +329,7 @@ function App() {
     isSuspended,
     userData: !!userData,
     suspensionData: userData?.suspension,
+    email: userData?.email,
   });
 
   // 🔥 Log de decisión de render
