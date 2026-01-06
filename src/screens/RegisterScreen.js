@@ -122,7 +122,7 @@ const RegisterScreen = ({ navigation }) => {
           if (backendUrl) {
             try {
               const response = await fetch(
-                `${backendUrl}/api/deleteUnverifiedUser`,
+                `${backendUrl}/api/auth/delete-unverified`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -145,10 +145,6 @@ const RegisterScreen = ({ navigation }) => {
             } catch (err) {
               console.error("❌ Error llamando al backend:", err);
               // Si falla el backend, intentar eliminar solo de Firestore
-              await deleteDoc(doc(db, "users", userDoc.id));
-              console.log(
-                "✅ Usuario eliminado de Firestore (Auth requiere esperar)"
-              );
               throw new Error("EXPIRED_USER_AUTH_PENDING");
             }
           } else {
@@ -262,6 +258,8 @@ const RegisterScreen = ({ navigation }) => {
         verificationAttempts: 1,
         hasPassword: true, // IMPORTANTE: Indicar que tiene contraseña
       });
+
+      setLoading(false);
 
       // PASO 5: Cerrar sesión automáticamente (igual que en la web)
       await auth.signOut();

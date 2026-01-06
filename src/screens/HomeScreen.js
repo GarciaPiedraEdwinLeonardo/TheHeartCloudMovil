@@ -248,6 +248,79 @@ const HomeScreen = ({ navigation }) => {
     </View>
   );
 
+  const renderVerificationBanner = () => {
+    // Solo mostrar si el usuario tiene role "unverified"
+    if (!userData || userData.role !== "unverified") {
+      return null;
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.verificationBanner}
+        onPress={() => {
+          Alert.alert(
+            "Verificación de Cuenta",
+            "Para verificarte como médico, necesitas acceder a la versión web de TheHeartCloud.\n\n¿Deseas abrir el sitio web ahora?",
+            [
+              { text: "Cancelar", style: "cancel" },
+              {
+                text: "Abrir Web",
+                onPress: () => {
+                  // En React Native, puedes usar Linking para abrir URLs
+                  const { Linking } = require("react-native");
+                  Linking.openURL("https://theheartcloud-a11a0.web.app/").catch(
+                    (err) =>
+                      Alert.alert("Error", "No se pudo abrir el navegador")
+                  );
+                },
+              },
+            ]
+          );
+        }}
+        activeOpacity={0.8}
+      >
+        <View style={styles.bannerContent}>
+          {/* Icono de alerta */}
+          <View style={styles.bannerIconContainer}>
+            <IconButton
+              icon="shield-alert"
+              size={32}
+              iconColor="#d97706"
+              style={styles.bannerIcon}
+            />
+          </View>
+
+          {/* Contenido del banner */}
+          <View style={styles.bannerTextContainer}>
+            <Text style={styles.bannerTitle}>Cuenta No Verificada</Text>
+            <Text style={styles.bannerDescription}>
+              Para publicar, comentar y unirte a foros necesitas verificarte
+              como médico en nuestra página web.
+            </Text>
+
+            {/* Botón de acción */}
+            <View style={styles.bannerActionContainer}>
+              <View style={styles.bannerButton}>
+                <IconButton
+                  icon="open-in-new"
+                  size={16}
+                  iconColor="#ffffff"
+                  style={styles.bannerButtonIcon}
+                />
+                <Text style={styles.bannerButtonText}>Verificarme Ahora</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Indicador visual de que es clickeable */}
+        <View style={styles.bannerChevron}>
+          <IconButton icon="chevron-right" size={24} iconColor="#92400e" />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   // Render sidebar
   const renderSidebar = () => {
     if (!isSidebarOpen) return null;
@@ -449,6 +522,8 @@ const HomeScreen = ({ navigation }) => {
         }
         showsVerticalScrollIndicator={false}
       >
+        {renderVerificationBanner()}
+
         {/* Título de sección */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Publicaciones Recientes</Text>
@@ -792,6 +867,84 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: "#ef4444",
+  },
+  verificationBanner: {
+    backgroundColor: "#fef3c7",
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#fbbf24",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  bannerContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  bannerIconContainer: {
+    marginRight: 12,
+    marginTop: 4,
+  },
+  bannerIcon: {
+    margin: 0,
+    padding: 0,
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#92400e",
+    marginBottom: 6,
+    letterSpacing: -0.2,
+  },
+  bannerDescription: {
+    fontSize: 14,
+    color: "#78350f",
+    lineHeight: 20,
+    marginBottom: 12,
+    fontWeight: "500",
+  },
+  bannerActionContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  bannerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#d97706",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  bannerButtonIcon: {
+    margin: 0,
+    padding: 0,
+    marginRight: 4,
+  },
+  bannerButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  bannerChevron: {
+    marginLeft: 8,
   },
 });
 
