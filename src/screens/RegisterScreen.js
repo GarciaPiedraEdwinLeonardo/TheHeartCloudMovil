@@ -44,7 +44,7 @@ const RegisterScreen = ({ navigation }) => {
 
   const validateEmail = (email) => {
     if (!email) return "El email es requerido";
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) return "Formato de email inválido";
     return null;
   };
