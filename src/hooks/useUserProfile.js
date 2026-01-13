@@ -24,7 +24,65 @@ export const useUserProfile = (userId) => {
       const userDoc = await getDoc(doc(db, "users", userId));
 
       if (!userDoc.exists()) {
-        throw new Error("Usuario no encontrado");
+        const deletedUserProfile = {
+          id: userId,
+          email: null,
+
+          nombreCompleto: "Usuario eliminado",
+          name: "Usuario",
+          apellidopat: "",
+          apellidomat: "",
+
+          especialidad: "Cuenta eliminada",
+          specialty: "Cuenta eliminada",
+          professionalInfo: {},
+
+          photoURL: null,
+          profileMedia: null,
+
+          joinDate: null,
+          fechaRegistro: null,
+          lastLogin: null,
+
+          role: "deleted",
+          emailVerified: false,
+          verificationStatus: "deleted",
+
+          suspension: { isSuspended: true },
+
+          stats: {
+            postsCount: 0,
+            commentsCount: 0,
+            communitiesCount: 0,
+            aura: 0,
+            contributionCount: 0,
+            daysActive: 0,
+            publicaciones: 0,
+            comentarios: 0,
+            temasParticipacion: 0,
+          },
+
+          estadisticas: {
+            publicaciones: 0,
+            comentarios: 0,
+            temasParticipacion: 0,
+            aura: 0,
+            contributionCount: 0,
+          },
+
+          posts: [],
+          comments: [],
+          communities: [],
+
+          _rawPosts: 0,
+          _rawComments: 0,
+          _rawCommunities: 0,
+
+          isDeletedUser: true,
+        };
+
+        setUserData(deletedUserProfile);
+        return deletedUserProfile;
       }
 
       const userBasicData = userDoc.data();

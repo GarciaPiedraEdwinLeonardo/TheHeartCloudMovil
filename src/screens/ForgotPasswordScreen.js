@@ -1,28 +1,21 @@
 // screens/ForgotPasswordScreen.js
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Image,
-} from 'react-native';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../config/firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { TextInput, Button, Card, IconButton } from 'react-native-paper';
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Alert, Image } from "react-native";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../config/firebase";
+import { useAuth } from "../contexts/AuthContext";
+import { TextInput, Button, Card, IconButton } from "react-native-paper";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { loading, setLoading } = useAuth();
-  const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
-  const [fieldError, setFieldError] = useState('');
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [fieldError, setFieldError] = useState("");
 
   const validateEmail = (email) => {
-    if (!email) return 'El email es requerido';
+    if (!email) return "El email es requerido";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) return 'Formato de email inválido';
+    if (!emailRegex.test(email)) return "Formato de email inválido";
     return null;
   };
 
@@ -36,11 +29,13 @@ const ForgotPasswordScreen = ({ navigation }) => {
     }
     try {
       await sendPasswordResetEmail(auth, email);
-      setMessage('Se ha enviado un enlace para restablecer tu contraseña a tu correo electrónico.');
-      setEmail('');
-      setFieldError('');
+      setMessage(
+        "Si existe una cuenta asociada a este correo, recibirás un enlace para restablecer tu contraseña."
+      );
+      setEmail("");
+      setFieldError("");
     } catch (error) {
-      Alert.alert('Error', getErrorMessage(error.code));
+      Alert.alert("Error", getErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
@@ -48,12 +43,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   const getErrorMessage = (errorCode) => {
     switch (errorCode) {
-      case 'auth/user-not-found':
-        return 'No existe una cuenta con este correo electrónico.';
-      case 'auth/invalid-email':
-        return 'El correo electrónico no es válido.';
+      case "auth/user-not-found":
+        return "No existe una cuenta con este correo electrónico.";
+      case "auth/invalid-email":
+        return "El correo electrónico no es válido.";
       default:
-        return 'Error al enviar el correo de recuperación. Intenta nuevamente.';
+        return "Error al enviar el correo de recuperación. Intenta nuevamente.";
     }
   };
 
@@ -65,8 +60,8 @@ const ForgotPasswordScreen = ({ navigation }) => {
           size={24}
           onPress={() => navigation.goBack()}
         />
-        <Image 
-          source={require('../../assets/images/logoprincipal.png')} 
+        <Image
+          source={require("../../assets/images/logoprincipal.png")}
           style={styles.headerLogo}
           resizeMode="contain"
         />
@@ -75,15 +70,16 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
       <Card style={styles.card}>
         <Card.Content>
-          <Image 
-            source={require('../../assets/images/logoprincipal.png')} 
+          <Image
+            source={require("../../assets/images/logoprincipal.png")}
             style={styles.logo}
             resizeMode="contain"
           />
-          
+
           <Text style={styles.cardTitle}>Recuperar Contraseña</Text>
           <Text style={styles.cardSubtitle}>
-            Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.
+            Ingresa tu correo electrónico y te enviaremos un enlace para
+            restablecer tu contraseña.
           </Text>
 
           {message ? (
@@ -106,7 +102,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
             onChangeText={(value) => {
               const processedValue = value.slice(0, 254);
               setEmail(processedValue);
-              if (processedValue && fieldError) setFieldError('');
+              if (processedValue && fieldError) setFieldError("");
             }}
             mode="outlined"
             style={styles.input}
@@ -116,7 +112,9 @@ const ForgotPasswordScreen = ({ navigation }) => {
             maxLength={254}
             left={<TextInput.Icon icon="email" />}
           />
-          {fieldError ? <Text style={styles.errorText}>{fieldError}</Text> : null}
+          {fieldError ? (
+            <Text style={styles.errorText}>{fieldError}</Text>
+          ) : null}
 
           <Button
             mode="contained"
@@ -128,12 +126,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
             labelStyle={styles.buttonLabel}
             icon="email-send"
           >
-            {loading ? 'Enviando...' : 'Enviar enlace de recuperación'}
+            {loading ? "Enviando..." : "Enviar enlace de recuperación"}
           </Button>
 
           <Button
             mode="outlined"
-            onPress={() => navigation.navigate('Login')}
+            onPress={() => navigation.navigate("Login")}
             style={styles.backButton}
             contentStyle={styles.buttonContent}
             labelStyle={styles.outlinedButtonLabel}
@@ -150,12 +148,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: "#f8fafc",
     padding: 20,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 24,
     marginTop: 20,
   },
@@ -166,17 +164,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#1e293b',
+    fontWeight: "800",
+    color: "#1e293b",
     flex: 1,
     letterSpacing: -0.3,
   },
   card: {
     borderRadius: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 8,
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -184,74 +182,74 @@ const styles = StyleSheet.create({
   logo: {
     width: 80,
     height: 80,
-    alignSelf: 'center',
+    alignSelf: "center",
     marginBottom: 5,
   },
   cardTitle: {
     fontSize: 30,
-    fontWeight: '700',
-    color: '#1e293b',
-    textAlign: 'center',
+    fontWeight: "700",
+    color: "#1e293b",
+    textAlign: "center",
     marginBottom: 12,
     letterSpacing: -0.3,
     lineHeight: 28,
   },
   cardSubtitle: {
     fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center',
+    color: "#64748b",
+    textAlign: "center",
     lineHeight: 22,
     marginBottom: 24,
     letterSpacing: 0.1,
   },
   successCard: {
-    backgroundColor: '#f0fdf4',
+    backgroundColor: "#f0fdf4",
     borderWidth: 1,
-    borderColor: '#bbf7d0',
+    borderColor: "#bbf7d0",
     borderRadius: 12,
     marginBottom: 24,
   },
   successContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   successIcon: {
     margin: 0,
     marginRight: 12,
   },
   successText: {
-    color: '#166534',
+    color: "#166534",
     fontSize: 14,
     flex: 1,
     lineHeight: 20,
-    fontWeight: '500',
+    fontWeight: "500",
     letterSpacing: 0.1,
   },
   input: {
     marginBottom: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   errorText: {
-    color: '#ef4444',
+    color: "#ef4444",
     fontSize: 13,
     marginTop: -8,
     marginBottom: 12,
     marginLeft: 4,
-    fontWeight: '500',
+    fontWeight: "500",
     letterSpacing: 0.1,
   },
   submitButton: {
-    backgroundColor: '#2a55ff',
+    backgroundColor: "#2a55ff",
     borderRadius: 12,
     marginBottom: 12,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
   },
   backButton: {
-    borderColor: '#004AAD',
+    borderColor: "#004AAD",
     borderRadius: 12,
   },
   buttonContent: {
@@ -259,13 +257,13 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.3,
   },
   outlinedButtonLabel: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#004AAD',
+    fontWeight: "700",
+    color: "#004AAD",
     letterSpacing: 0.3,
   },
 });

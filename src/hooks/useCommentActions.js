@@ -272,26 +272,31 @@ export const useCommentActions = () => {
           // ELIMINAR el documento en lugar de marcarlo como eliminado
           currentBatch.delete(commentRef);
 
-          // Actualizar estadísticas del autor
+          // Actualizar estadísticas del autor (solo si existe)
           const commentAuthorId = currentCommentData.authorId;
 
-          if (commentAuthorId === user.uid) {
-            // Si el usuario elimina su propio comentario
-            currentBatch.update(doc(db, "users", commentAuthorId), {
-              "stats.commentCount": increment(-1),
-              "stats.contributionCount": increment(-1),
-            });
-          } else if (
-            isModeratorAction ||
-            isModeratorOrAdmin ||
-            isForumModerator
-          ) {
-            // Si es moderador eliminando comentario de otro usuario
-            currentBatch.update(doc(db, "users", commentAuthorId), {
-              "stats.commentCount": increment(-1),
-              "stats.contributionCount": increment(-1),
-              "stats.warnings": increment(1),
-            });
+          if (commentAuthorId) {
+            const authorRef = doc(db, "users", commentAuthorId);
+            const authorSnap = await getDoc(authorRef);
+
+            if (authorSnap.exists()) {
+              if (commentAuthorId === user.uid) {
+                currentBatch.update(authorRef, {
+                  "stats.commentCount": increment(-1),
+                  "stats.contributionCount": increment(-1),
+                });
+              } else if (
+                isModeratorAction ||
+                isModeratorOrAdmin ||
+                isForumModerator
+              ) {
+                currentBatch.update(authorRef, {
+                  "stats.commentCount": increment(-1),
+                  "stats.contributionCount": increment(-1),
+                  "stats.warnings": increment(1),
+                });
+              }
+            }
           }
         }
 
@@ -354,7 +359,9 @@ export const useCommentActions = () => {
       const commentRef = doc(db, "comments", commentId);
       const commentDoc = await getDoc(commentRef);
 
-      if (!commentDoc.exists()) throw new Error("Comentario no encontrado");
+      if (!commentDoc.exists()) {
+        throw new Error("Comentario no encontrado");
+      }
 
       const commentData = commentDoc.data();
       const authorId = commentData.authorId;
@@ -364,35 +371,29 @@ export const useCommentActions = () => {
 
       const batch = writeBatch(db);
 
-      if (isLiked) {
-        // Quitar like
-        batch.update(commentRef, {
-          likes: arrayRemove(user.uid),
-          likeCount: increment(-1),
-        });
+      // 🔹 Like / Unlike del comentario
+      batch.update(commentRef, {
+        likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+        likeCount: increment(isLiked ? -1 : 1),
+      });
 
-        // Actualizar aura del autor (-1) si no es el mismo usuario
-        if (authorId !== user.uid) {
-          batch.update(doc(db, "users", authorId), {
-            "stats.aura": increment(-1),
-          });
-        }
-      } else {
-        // Agregar like
-        batch.update(commentRef, {
-          likes: arrayUnion(user.uid),
-          likeCount: increment(1),
-        });
+      // 🔹 Actualizar aura SOLO si:
+      // - Hay authorId
+      // - No es el mismo usuario
+      // - El usuario autor EXISTE
+      if (authorId && authorId !== user.uid) {
+        const authorRef = doc(db, "users", authorId);
+        const authorSnap = await getDoc(authorRef);
 
-        // Actualizar aura del autor (+1) si no es el mismo usuario
-        if (authorId !== user.uid) {
-          batch.update(doc(db, "users", authorId), {
-            "stats.aura": increment(1),
+        if (authorSnap.exists()) {
+          batch.update(authorRef, {
+            "stats.aura": increment(isLiked ? -1 : 1),
           });
         }
       }
 
       await batch.commit();
+
       return { success: true, liked: !isLiked };
     } catch (error) {
       console.error("Error en like del comentario:", error);

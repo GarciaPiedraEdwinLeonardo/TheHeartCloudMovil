@@ -277,12 +277,17 @@ export const usePostActions = () => {
         const batch = writeBatch(db);
         for (const [authorId, commentCount] of authorsMap) {
           const authorRef = doc(db, "users", authorId);
-          batch.update(authorRef, {
-            "stats.commentCount": increment(-commentCount),
-            "stats.contributionCount": increment(-commentCount),
-          });
-          updatedAuthorsCount++;
+          const authorSnap = await getDoc(authorRef);
+
+          if (authorSnap.exists()) {
+            batch.update(authorRef, {
+              "stats.commentCount": increment(-commentCount),
+              "stats.contributionCount": increment(-commentCount),
+            });
+            updatedAuthorsCount++;
+          }
         }
+
         await batch.commit();
       }
 
@@ -413,9 +418,17 @@ export const usePostActions = () => {
       // 2. Actualizar aura del autor SOLO si hay cambio y no es el mismo usuario
       if (auraChange !== 0 && authorId !== userId) {
         const authorRef = doc(db, "users", authorId);
-        batch.update(authorRef, {
-          "stats.aura": increment(auraChange),
-        });
+
+        try {
+          const authorDoc = await getDoc(authorRef);
+          if (authorDoc.exists()) {
+            batch.update(authorRef, {
+              "stats.aura": increment(auraChange),
+            });
+          }
+        } catch (error) {
+          console.warn(`Error verificando usuario ${authorId}:`, error.message);
+        }
       }
 
       await batch.commit();
